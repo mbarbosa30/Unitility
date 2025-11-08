@@ -22,28 +22,126 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Plus, Settings, TrendingUp } from "lucide-react";
 import TokenIcon from "./TokenIcon";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation } from "@tanstack/react-query";
 import type { Pool } from "@shared/schema";
 import { useToast } from "@/hooks/use-toast";
+import { apiRequest, queryClient } from "@/lib/queryClient";
 
 export default function SponsorDashboard() {
   const [createOpen, setCreateOpen] = useState(false);
+  const [adjustOpen, setAdjustOpen] = useState(false);
+  const [selectedPool, setSelectedPool] = useState<Pool | null>(null);
+  const [tokenSymbol, setTokenSymbol] = useState("");
+  const [tokenName, setTokenName] = useState("");
+  const [ethAmount, setEthAmount] = useState("");
+  const [feePercentage, setFeePercentage] = useState("");
+  const [newFeePercentage, setNewFeePercentage] = useState("");
   const { toast } = useToast();
 
   const { data: pools } = useQuery<Pool[]>({
     queryKey: ["/api/pools"],
   });
 
-  //todo: remove mock functionality - user's pools
+  //todo: remove mock functionality - user's pools (showing first 2 for demo)
   const myPools = pools?.slice(0, 2) || [];
 
+  // Calculate stats from pools
+  const totalEth = myPools.reduce((sum, pool) => sum + parseFloat(pool.ethDeposited || "0"), 0).toFixed(1);
+  const totalFees = myPools.reduce((sum, pool) => sum + parseFloat(pool.feesEarned || "0"), 0).toFixed(0);
+  const avgApy = myPools.length > 0
+    ? (myPools.reduce((sum, pool) => sum + parseFloat(pool.apy || "0"), 0) / myPools.length).toFixed(1)
+    : "0.0";
+
+  const createPoolMutation = useMutation({
+    mutationFn: async (newPool: any) => {
+      return await apiRequest("/api/pools", {
+        method: "POST",
+        body: JSON.stringify(newPool),
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/pools"] });
+      toast({
+        title: "Pool Created",
+        description: "Your sponsorship pool is now active",
+      });
+      setCreateOpen(false);
+      resetCreateForm();
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to create pool",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const updatePoolMutation = useMutation({
+    mutationFn: async ({ id, fee }: { id: string; fee: string }) => {
+      return await apiRequest(`/api/pools/${id}`, {
+        method: "PATCH",
+        body: JSON.stringify({ feePercentage: fee }),
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/pools"] });
+      toast({
+        title: "Pool Updated",
+        description: "Fee percentage has been adjusted",
+      });
+      setAdjustOpen(false);
+      setSelectedPool(null);
+      setNewFeePercentage("");
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to update pool",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const resetCreateForm = () => {
+    setTokenSymbol("");
+    setTokenName("");
+    setEthAmount("");
+    setFeePercentage("");
+  };
+
   const handleCreatePool = () => {
-    console.log("Creating new pool");
-    toast({
-      title: "Pool Created",
-      description: "Your sponsorship pool is now active",
+    if (!tokenSymbol || !tokenName || !ethAmount || !feePercentage) {
+      toast({
+        title: "Validation Error",
+        description: "Please fill in all fields",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    createPoolMutation.mutate({
+      tokenSymbol: tokenSymbol.toUpperCase(),
+      tokenName,
+      feePercentage,
+      ethDeposited: ethAmount,
+      feesEarned: "0",
+      volume: "0",
+      discount: "0",
+      apy: "0",
+      gasPrice: "0.001",
     });
-    setCreateOpen(false);
+  };
+
+  const handleAdjustPool = (pool: Pool) => {
+    setSelectedPool(pool);
+    setNewFeePercentage(pool.feePercentage);
+    setAdjustOpen(true);
+  };
+
+  const handleUpdateFee = () => {
+    if (!selectedPool || !newFeePercentage) return;
+    updatePoolMutation.mutate({ id: selectedPool.id, fee: newFeePercentage });
   };
 
   return (
@@ -55,7 +153,7 @@ export default function SponsorDashboard() {
             <TrendingUp className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold tabular-nums">7.3</div>
+            <div className="text-2xl font-bold tabular-nums">{totalEth}</div>
             <p className="text-xs text-muted-foreground">
               Across {myPools.length} pools
             </p>
@@ -68,7 +166,7 @@ export default function SponsorDashboard() {
             <TrendingUp className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold tabular-nums">1,329</div>
+            <div className="text-2xl font-bold tabular-nums">{totalFees}</div>
             <p className="text-xs text-green-500">
               +18% this week
             </p>
@@ -81,7 +179,7 @@ export default function SponsorDashboard() {
             <TrendingUp className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold tabular-nums">11.0%</div>
+            <div className="text-2xl font-bold tabular-nums">{avgApy}%</div>
             <p className="text-xs text-muted-foreground">
               Annualized return
             </p>
@@ -115,18 +213,54 @@ export default function SponsorDashboard() {
                 <div className="space-y-4">
                   <div className="space-y-2">
                     <Label htmlFor="token-symbol">Token Symbol</Label>
-                    <Input id="token-symbol" placeholder="e.g., DOGGO" data-testid="input-token-symbol" />
+                    <Input
+                      id="token-symbol"
+                      placeholder="e.g., DOGGO"
+                      value={tokenSymbol}
+                      onChange={(e) => setTokenSymbol(e.target.value)}
+                      data-testid="input-token-symbol"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="token-name">Token Name</Label>
+                    <Input
+                      id="token-name"
+                      placeholder="e.g., Doggo Token"
+                      value={tokenName}
+                      onChange={(e) => setTokenName(e.target.value)}
+                      data-testid="input-token-name"
+                    />
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="eth-amount">ETH Amount</Label>
-                    <Input id="eth-amount" type="number" placeholder="0.00" data-testid="input-eth-amount" />
+                    <Input
+                      id="eth-amount"
+                      type="number"
+                      placeholder="0.00"
+                      value={ethAmount}
+                      onChange={(e) => setEthAmount(e.target.value)}
+                      data-testid="input-eth-amount"
+                    />
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="fee">Fee Percentage</Label>
-                    <Input id="fee" type="number" placeholder="0.5" step="0.1" data-testid="input-fee" />
+                    <Input
+                      id="fee"
+                      type="number"
+                      placeholder="0.5"
+                      step="0.1"
+                      value={feePercentage}
+                      onChange={(e) => setFeePercentage(e.target.value)}
+                      data-testid="input-fee"
+                    />
                   </div>
-                  <Button onClick={handleCreatePool} className="w-full" data-testid="button-confirm-create">
-                    Create Pool
+                  <Button
+                    onClick={handleCreatePool}
+                    className="w-full"
+                    disabled={createPoolMutation.isPending}
+                    data-testid="button-confirm-create"
+                  >
+                    {createPoolMutation.isPending ? "Creating..." : "Create Pool"}
                   </Button>
                 </div>
               </DialogContent>
@@ -167,7 +301,12 @@ export default function SponsorDashboard() {
                     </TableCell>
                     <TableCell className="text-right">
                       <div className="flex justify-end gap-2">
-                        <Button size="sm" variant="ghost" data-testid={`button-adjust-${pool.tokenSymbol.toLowerCase()}`}>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => handleAdjustPool(pool)}
+                          data-testid={`button-adjust-${pool.tokenSymbol.toLowerCase()}`}
+                        >
                           <Settings className="h-3 w-3 mr-1" />
                           Adjust
                         </Button>
@@ -187,6 +326,39 @@ export default function SponsorDashboard() {
           </div>
         </CardContent>
       </Card>
+
+      <Dialog open={adjustOpen} onOpenChange={setAdjustOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Adjust Pool Fee</DialogTitle>
+            <DialogDescription>
+              Update the fee percentage for {selectedPool?.tokenSymbol} pool
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="new-fee">New Fee Percentage</Label>
+              <Input
+                id="new-fee"
+                type="number"
+                placeholder="0.5"
+                step="0.1"
+                value={newFeePercentage}
+                onChange={(e) => setNewFeePercentage(e.target.value)}
+                data-testid="input-new-fee"
+              />
+            </div>
+            <Button
+              onClick={handleUpdateFee}
+              className="w-full"
+              disabled={updatePoolMutation.isPending}
+              data-testid="button-confirm-adjust"
+            >
+              {updatePoolMutation.isPending ? "Updating..." : "Update Fee"}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
