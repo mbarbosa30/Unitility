@@ -21,8 +21,9 @@ import { Sparkles, TrendingDown } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import TokenIcon from "./TokenIcon";
 import { useToast } from "@/hooks/use-toast";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation } from "@tanstack/react-query";
 import type { Pool } from "@shared/schema";
+import { apiRequest, queryClient } from "@/lib/queryClient";
 
 export default function GetTokenButton() {
   const [open, setOpen] = useState(false);
@@ -38,14 +39,51 @@ export default function GetTokenButton() {
   const selectedPool = discountedPools.find(p => p.tokenSymbol === selectedToken);
   const savings = selectedPool ? Math.abs(parseFloat(selectedPool.discount)) : 0;
 
+  const getTokenMutation = useMutation({
+    mutationFn: async ({ poolId, ethValue }: { poolId: string; ethValue: string }) => {
+      // Use atomic increment so backend calculates new volume based on current state
+      const volumeIncrease = (parseFloat(ethValue) * 2000).toString();
+      const res = await apiRequest("PATCH", `/api/pools/${poolId}`, {
+        incrementVolume: volumeIncrease,
+      });
+      return await res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/pools"] });
+      toast({
+        title: "Token Acquired",
+        description: `You saved ${savings.toFixed(1)}% vs. Uniswap!`,
+      });
+      setOpen(false);
+      setEthAmount("");
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to acquire token",
+        variant: "destructive",
+      });
+    },
+  });
+
   const handleGetToken = () => {
-    console.log("Getting", selectedToken, "with", ethAmount, "ETH");
-    toast({
-      title: "Token Acquired",
-      description: `You saved ${savings.toFixed(1)}% vs. Uniswap!`,
+    if (!ethAmount || !selectedPool) {
+      toast({
+        title: "Validation Error",
+        description: "Please enter ETH amount",
+        variant: "destructive",
+      });
+      return;
+    }
+    
+    // Capture current values to avoid stale closures
+    const currentPoolId = selectedPool.id;
+    const currentEthAmount = ethAmount;
+    
+    getTokenMutation.mutate({
+      poolId: currentPoolId,
+      ethValue: currentEthAmount,
     });
-    setOpen(false);
-    setEthAmount("");
   };
 
   return (
@@ -120,11 +158,11 @@ export default function GetTokenButton() {
             onClick={handleGetToken}
             className="w-full"
             size="lg"
-            disabled={!ethAmount}
+            disabled={!ethAmount || getTokenMutation.isPending}
             data-testid="button-confirm-get-token"
           >
             <Sparkles className="h-4 w-4 mr-2" />
-            Get {selectedToken} Now
+            {getTokenMutation.isPending ? "Acquiring..." : `Get ${selectedToken} Now`}
           </Button>
         </div>
       </DialogContent>

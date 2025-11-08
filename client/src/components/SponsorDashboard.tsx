@@ -42,10 +42,10 @@ export default function SponsorDashboard() {
     queryKey: ["/api/pools"],
   });
 
-  //todo: remove mock functionality - user's pools (showing first 2 for demo)
-  const myPools = pools?.slice(0, 2) || [];
+  //todo: remove mock functionality - in production, filter pools by current user's wallet address
+  const myPools = pools || [];
 
-  // Calculate stats from pools
+  // Calculate stats from all pools
   const totalEth = myPools.reduce((sum, pool) => sum + parseFloat(pool.ethDeposited || "0"), 0).toFixed(1);
   const totalFees = myPools.reduce((sum, pool) => sum + parseFloat(pool.feesEarned || "0"), 0).toFixed(0);
   const avgApy = myPools.length > 0
@@ -54,10 +54,8 @@ export default function SponsorDashboard() {
 
   const createPoolMutation = useMutation({
     mutationFn: async (newPool: any) => {
-      return await apiRequest("/api/pools", {
-        method: "POST",
-        body: JSON.stringify(newPool),
-      });
+      const res = await apiRequest("POST", "/api/pools", newPool);
+      return await res.json();
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/pools"] });
@@ -79,10 +77,8 @@ export default function SponsorDashboard() {
 
   const updatePoolMutation = useMutation({
     mutationFn: async ({ id, fee }: { id: string; fee: string }) => {
-      return await apiRequest(`/api/pools/${id}`, {
-        method: "PATCH",
-        body: JSON.stringify({ feePercentage: fee }),
-      });
+      const res = await apiRequest("PATCH", `/api/pools/${id}`, { feePercentage: fee });
+      return await res.json();
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/pools"] });

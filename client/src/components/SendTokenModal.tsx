@@ -21,6 +21,9 @@ import { Send, Info, Zap } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import TokenIcon from "./TokenIcon";
 import { useToast } from "@/hooks/use-toast";
+import { useQuery, useMutation } from "@tanstack/react-query";
+import type { Pool } from "@shared/schema";
+import { apiRequest, queryClient } from "@/lib/queryClient";
 
 export default function SendTokenModal() {
   const [open, setOpen] = useState(false);
@@ -29,26 +32,75 @@ export default function SendTokenModal() {
   const [recipient, setRecipient] = useState("");
   const { toast } = useToast();
 
-  //todo: remove mock functionality
-  const tokens = [
-    { symbol: "DOGGO", name: "Doggo Token", balance: "1,240.00", fee: "0.4%" },
-    { symbol: "USDC", name: "USD Coin", balance: "500.00", fee: "0.1%" },
-    { symbol: "RARE", name: "Rare Token", balance: "89.50", fee: "0.8%" },
-  ];
+  const { data: pools } = useQuery<Pool[]>({
+    queryKey: ["/api/pools"],
+  });
 
-  const currentToken = tokens.find(t => t.symbol === selectedToken);
-  const fee = amount ? (parseFloat(amount) * parseFloat(currentToken?.fee || "0") / 100).toFixed(2) : "0.00";
-  const youSend = amount ? (parseFloat(amount) - parseFloat(fee)).toFixed(2) : "0.00";
+  //todo: remove mock functionality - wallet balances
+  const mockBalances: Record<string, string> = {
+    DOGGO: "1240.00",
+    USDC: "500.00",
+    RARE: "89.50",
+  };
+
+  const currentPool = pools?.find(p => p.tokenSymbol === selectedToken);
+  const feePercentage = currentPool ? parseFloat(currentPool.feePercentage) : 0;
+  const fee = amount ? (parseFloat(amount) * feePercentage / 100).toFixed(4) : "0.00";
+  const youSend = amount ? (parseFloat(amount) - parseFloat(fee)).toFixed(4) : "0.00";
+
+  const sendTokenMutation = useMutation({
+    mutationFn: async ({ transaction }: { transaction: any }) => {
+      // Backend handles pool updates atomically
+      const res = await apiRequest("POST", "/api/transactions", transaction);
+      return await res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/pools"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/transactions"] });
+      toast({
+        title: "Transaction Submitted",
+        description: `Sending ${youSend} ${selectedToken} (${fee} ${selectedToken} fee)`,
+      });
+      setOpen(false);
+      setAmount("");
+      setRecipient("");
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to send transaction",
+        variant: "destructive",
+      });
+    },
+  });
 
   const handleSend = () => {
-    console.log("Sending", amount, selectedToken, "to", recipient);
-    toast({
-      title: "Transaction Submitted",
-      description: `Sending ${youSend} ${selectedToken} (${fee} ${selectedToken} fee)`,
+    if (!recipient || !amount || !currentPool) {
+      toast({
+        title: "Validation Error",
+        description: "Please fill in all fields and select a token with an active pool",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    // Capture current values to avoid stale closures
+    const currentFee = fee;
+    const currentYouSend = youSend;
+    const currentRecipient = recipient;
+    const currentPoolId = currentPool.id;
+    const currentToken = selectedToken;
+
+    sendTokenMutation.mutate({
+      transaction: {
+        fromAddress: "0x742d35Cc6634C0532925a3b844Bc9e7595f0bEb", // Mock wallet address
+        toAddress: currentRecipient,
+        tokenSymbol: currentToken,
+        amount: currentYouSend,
+        fee: currentFee,
+        poolId: currentPoolId,
+      },
     });
-    setOpen(false);
-    setAmount("");
-    setRecipient("");
   };
 
   return (
@@ -86,14 +138,14 @@ export default function SendTokenModal() {
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                {tokens.map((token) => (
-                  <SelectItem key={token.symbol} value={token.symbol}>
+                {pools?.map((pool) => (
+                  <SelectItem key={pool.tokenSymbol} value={pool.tokenSymbol}>
                     <div className="flex items-center gap-2">
-                      <TokenIcon symbol={token.symbol} size="sm" />
+                      <TokenIcon symbol={pool.tokenSymbol} size="sm" />
                       <div className="flex flex-col">
-                        <span className="font-medium">{token.symbol}</span>
+                        <span className="font-medium">{pool.tokenSymbol}</span>
                         <span className="text-xs text-muted-foreground">
-                          Balance: {token.balance}
+                          Balance: {mockBalances[pool.tokenSymbol] || "0.00"}
                         </span>
                       </div>
                     </div>
@@ -109,7 +161,7 @@ export default function SendTokenModal() {
               <Button
                 variant="ghost"
                 size="sm"
-                onClick={() => setAmount(currentToken?.balance.replace(/,/g, "") || "")}
+                onClick={() => setAmount(mockBalances[selectedToken]?.replace(/,/g, "") || "")}
                 data-testid="button-max"
               >
                 Max
@@ -151,11 +203,11 @@ export default function SendTokenModal() {
             onClick={handleSend}
             className="w-full"
             size="lg"
-            disabled={!amount || !recipient}
+            disabled={!amount || !recipient || sendTokenMutation.isPending}
             data-testid="button-confirm-send"
           >
             <Send className="h-4 w-4 mr-2" />
-            Send
+            {sendTokenMutation.isPending ? "Sending..." : "Send"}
           </Button>
         </div>
       </DialogContent>

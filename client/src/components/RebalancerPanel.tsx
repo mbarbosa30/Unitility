@@ -3,9 +3,10 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { TrendingDown, Zap } from "lucide-react";
 import TokenIcon from "./TokenIcon";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation } from "@tanstack/react-query";
 import type { Pool } from "@shared/schema";
 import { useToast } from "@/hooks/use-toast";
+import { apiRequest, queryClient } from "@/lib/queryClient";
 
 export default function RebalancerPanel() {
   const { toast } = useToast();
@@ -24,12 +25,35 @@ export default function RebalancerPanel() {
     return ((volume * discount) / 100 / 1000).toFixed(0);
   };
 
+  const rebalanceMutation = useMutation({
+    mutationFn: async (pool: Pool) => {
+      // Simulate rebalancing by adjusting the discount closer to 0
+      const currentDiscount = parseFloat(pool.discount);
+      const newDiscount = (currentDiscount * 0.5).toFixed(2); // Reduce discount by half
+      
+      const res = await apiRequest("PATCH", `/api/pools/${pool.id}`, {
+        discount: newDiscount,
+      });
+      return await res.json();
+    },
+    onSuccess: (_, pool) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/pools"] });
+      toast({
+        title: "Rebalance Executed",
+        description: `Arbitrage opportunity captured for ${pool.tokenSymbol}`,
+      });
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to execute rebalance",
+        variant: "destructive",
+      });
+    },
+  });
+
   const handleExecute = (pool: Pool) => {
-    console.log("Executing rebalance for", pool.tokenSymbol);
-    toast({
-      title: "Rebalance Executed",
-      description: `Arbitrage opportunity captured for ${pool.tokenSymbol}`,
-    });
+    rebalanceMutation.mutate(pool);
   };
 
   return (
@@ -83,10 +107,11 @@ export default function RebalancerPanel() {
                   size="sm"
                   className="gap-1"
                   onClick={() => handleExecute(pool)}
+                  disabled={rebalanceMutation.isPending}
                   data-testid={`button-execute-${pool.tokenSymbol.toLowerCase()}`}
                 >
                   <Zap className="h-3 w-3" />
-                  Execute
+                  {rebalanceMutation.isPending ? "Executing..." : "Execute"}
                 </Button>
               </div>
             </div>
