@@ -1,0 +1,216 @@
+Paymaster Market
+The Usability Layer for Every Token
+PRD v1.0 — November 2025
+
+1. Vision & Narrative
+“Every token should be as easy to send as a text message.”
+Today, ETH is the tollbooth to crypto. Even if you hold $USDC, $DOGGO, or $RARE — you can’t use it without ETH for gas.
+Paymaster Market removes that tollbooth. It turns any token into a self-sustaining, gasless utility layer — where:
+	•	Users send tokens like Venmo
+	•	Sponsors earn yield from usage
+	•	Rebalancers get exposure to tokens they love
+This isn’t just UX. This is the missing onramp to mass adoption.
+
+2. Core Value Proposition
+For Users
+For Sponsors
+For Token Projects
+For Rebalancers
+Send any token. No ETH. No gas.
+Earn yield in tokens you believe in — without buying them
+Your token becomes usable → adoption → value
+Buy tokens at a discount, just by helping the system
+One system. Four winners.
+
+3. Product Overview
+Paymaster Market =
+A decentralized marketplace of gas sponsorship pools Built on ERC-4337 Account Abstraction
+How It Works (30-Second Flow)
+	1	Sponsor deposits ETH into a pool for $DOGGO and sets 0.5% fee
+	2	User sends 100 $DOGGO to a friend → selects $DOGGO pool
+	3	Pool pays gas in ETH → User pays 0.5 $DOGGO fee
+	4	Sponsor earns 0.5 $DOGGO → User sends 99.5 $DOGGO
+	5	If ETH drops → discount emerges → Rebalancer buys $DOGGO via pool → system rebalances
+
+4. UX/UI First: The User Journey
+Goal: Zero friction. One-click sends. Delightful discovery.
+
+4.1 Onboarding (First-Time User)
+[Connect Wallet] → 
+"Welcome! You have 0 ETH. Want to send tokens anyway?"
+→ [Enable Gasless Mode] → (One-time: Approve Paymaster)
+→ "You're all set! Send any token, zero gas."
+No ETH? No problem. Auto-detects tokens with active pools.
+
+4.2 Send Flow (Core UX)
+┌────────────────────────────────────────────────────┐
+│ Send Token                                         │
+│                                                    │
+│ To:  0x1234...abcd   [Paste] [QR] [Contacts]       │
+│                                                    │
+│ Token:  $DOGGO ▼  (Balance: 1,240.00)              │
+│                                                    │
+│ Amount:  100.00                                    │
+│                                                    │
+│ Gas:    Paid by $DOGGO Pool (0.5 $DOGGO fee)   ✓   │
+│         [Why?]                                     │
+│                                                    │
+│ You send: 99.5 $DOGGO                              │
+│                                                    │
+│ [Send]                     [Max] [History]          │
+└────────────────────────────────────────────────────┘
+Key UX Wins:
+	•	No gas field — replaced with “Paid by X Pool”
+	•	Fee shown in token, not ETH
+	•	“Why?” explains: “A sponsor covers gas. You pay a tiny fee in $DOGGO.”
+
+4.3 Pool Discovery Dashboard
+🔥 Top Pools (by volume + discount)
+
+┌─────────────────┬───────┬────────┬──────────┬──────────┐
+│ Token           │ Fee   │ Gas    │ Discount │ Volume   │
+├─────────────────┼───────┼────────┼──────────┼──────────┤
+│ $DOGGO          │ 0.4%  │ 0.0012 │ -12.3% ✓ │ 2.1M     │ ← Hot!
+│ $USDC           │ 0.1%  │ 0.0008 │ +0.2%    │ 8.4M     │
+│ $RARE           │ 0.8%  │ 0.0021 │ -5.1%    │ 89K      │
+└─────────────────┴───────┴────────┴──────────┴──────────┘
+
+[Send via Pool] [Earn as Sponsor] [Rebalance]
+Visual Cues:
+	•	Green arrow ↓ = Discount vs. DEX → Buy opportunity
+	•	Red arrow ↑ = Overpriced → Avoid
+
+4.4 “I Want This Token” (Exposure Button)
+💡 Want $DOGGO but have only ETH?
+
+[Get $DOGGO Now] → 
+→ Routes through cheapest pool
+→ Pays fee in $DOGGO
+→ You get *more* than market rate
+→ “You saved 12.3% vs. Uniswap!”
+One-click exposure. No DEX. No gas.
+
+4.5 Sponsor Dashboard
+My Sponsorships
+
+┌─────────────────┬────────┬──────────┬───────┬──────────┐
+│ Token           │ ETH In │ Fees     │ APY   │ Actions  │
+├─────────────────┼────────┼──────────┼───────┼──────────┤
+│ $DOGGO          │ 5.2    │ 1,240    │ 18% ✓ │ [Withdraw] 
+│ $RARE           │ 2.1    │ 89       │ 4%    │ [Adjust] 
+└─────────────────┴────────┴──────────┴───────┴──────────┘
+
+[Create New Pool] [Auto-Rebalance: ON]
+APY = (Fees Earned in Token × Token Price) / ETH Deposited
+
+4.6 Rebalancer Toolkit
+🧮 Arb Opportunities
+
+┌─────────────────┬──────────┬────────────┬──────────┐
+│ Pool            │ Discount │ Profit     │ Gas Cost │
+├─────────────────┼──────────┼────────────┼──────────┤
+│ $DOGGO Pool     │ -12.3%   │ +$124      │ $8       │ ← Execute
+│ $RARE Pool      │ -5.1%    │ +$42       │ $12      │
+└─────────────────┴──────────┴────────────┴──────────┘
+
+[One-Click Rebalance] [Set Auto-Bot]
+
+5. MVP Scope (UX/UI First)
+Feature
+Priority
+Notes
+Gasless Send Modal
+P0
+Core UX. Wallet-integrated.
+Pool Discovery Dashboard
+P0
+Real-time data via The Graph
+“I Want This Token” Button
+P0
+Exposure onramp
+Sponsor Dashboard
+P1
+Deposit, withdraw, adjust fee
+Rebalancer Arb Panel
+P1
+Manual + auto
+Onchain Pool Factory
+P1
+ERC-4337 Paymaster + Pool logic
+Uniswap v4 Price Oracle
+P1
+For discount calc
+Mobile-First Design
+P0
+80% of sends are mobile
+
+6. Technical Architecture (High-Level)
+[Wallet] → [Paymaster Market dApp] → [ERC-4337 Bundler]
+    ↓              ↓                    ↓
+[Frontend]   [Pool Contracts]     [EntryPoint]
+    ↓              ↓                    ↓
+[UI/UX]     [Paymaster Logic]    [Ethereum/L2]
+Smart Contracts:
+	•	PaymasterFactory.sol → Deploys per-token pools
+	•	PaymasterPool.sol → ERC-4337 Paymaster + fee logic
+	•	Rebalancer.sol → Anyone-can-call arb trigger
+	•	OracleAdapter.sol → Chainlink + Uniswap v4 ticks
+Offchain:
+	•	The Graph indexer for pool stats
+	•	1inch API for rebalancing swaps
+	•	Flashbots for private txs (anti-MEV)
+
+7. Go-to-Market & Narrative Hooks
+Audience
+Hook
+Retail Users
+“Send crypto like cash. No gas. Ever.”
+Token Projects
+“Make your token usable — or watch it die.”
+DeFi Degens
+“Earn yield in tokens you love — without buying.”
+Wallets (MetaMask, Rainbow)
+“Add ‘Gasless Mode’ — win the UX war.”
+Launch Partners:
+	•	Meme coins (high volume)
+	•	Stablecoins (USDC, EUROC)
+	•	L2s (Base, Arbitrum — low gas = high margins)
+
+8. Success Metrics
+Metric
+Target (3 Months Post-Launch)
+Gasless Transfers
+100K+
+Active Pools
+50+ tokens
+Total ETH Sponsored
+500+ ETH
+Rebalancer Volume
+$1M+ arbed
+User Retention
+60% Week 1 → Week 4
+
+9. Risks & Mitigations
+Risk
+Mitigation
+Pool depletion
+Min transfer size, dynamic fees
+MEV frontrunning
+Flashbots + private mempool
+Oracle failure
+Chainlink + Uniswap TWAP fallback
+Regulatory
+Frame as “relay service”, not security
+
+10. Final Thought
+Paymaster Market doesn’t compete with DEXs. It completes them.
+Uniswap gives you price. We give you permission to use.
+
+Next Steps
+	1	Figma Prototype → [Link TBD]
+	2	Testnet MVP → Sepolia (2 weeks)
+	3	Seed Pool Bootstrap → $10K ETH from xAI treasury
+	4	Wallet Integration → MetaMask Snaps API
+
+Let’s build the layer where tokens don’t just trade — they live.
+Paymaster Market — Usability is the new liquidity.
