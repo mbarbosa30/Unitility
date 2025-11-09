@@ -8,11 +8,13 @@ export interface IStorage {
   getPool(id: string): Promise<Pool | undefined>;
   createPool(pool: InsertPool): Promise<Pool>;
   updatePool(id: string, pool: Partial<InsertPool>): Promise<Pool | undefined>;
+  deletePool(id: string): Promise<void>;
   
   // Transaction operations
   getAllTransactions(): Promise<Transaction[]>;
   getTransaction(id: string): Promise<Transaction | undefined>;
   createTransaction(transaction: InsertTransaction): Promise<Transaction>;
+  deleteTransaction(id: string): Promise<void>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -51,6 +53,14 @@ export class DatabaseStorage implements IStorage {
   async createTransaction(insertTransaction: InsertTransaction): Promise<Transaction> {
     const result = await db.insert(transactions).values(insertTransaction).returning();
     return result[0];
+  }
+
+  async deletePool(id: string): Promise<void> {
+    await db.delete(pools).where(eq(pools.id, id));
+  }
+
+  async deleteTransaction(id: string): Promise<void> {
+    await db.delete(transactions).where(eq(transactions.id, id));
   }
 }
 
