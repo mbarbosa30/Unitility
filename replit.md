@@ -20,6 +20,8 @@ Preferred communication style: Simple, everyday language.
 - Wouter for client-side routing (lightweight React Router alternative)
 - TanStack Query (React Query) for server state management and API caching
 - Tailwind CSS for styling with shadcn/ui component library
+- RainbowKit + Wagmi for Web3 wallet connection (Base mainnet)
+- Viem for Ethereum interactions and contract calls
 
 **Design Philosophy:**
 - Mobile-first approach (80% of transfers are mobile)
@@ -58,6 +60,7 @@ Preferred communication style: Simple, everyday language.
 - RESTful API design pattern
 - Drizzle ORM for database operations
 - Session-based architecture (connect-pg-simple for session storage)
+- Viem public client for blockchain event indexing on Base mainnet
 
 **API Design:**
 - RESTful endpoints following resource-based patterns
@@ -81,17 +84,45 @@ Preferred communication style: Simple, everyday language.
 - Schema-first approach with Zod validation
 
 **Schema Design:**
-- `pools` table: Tracks gas sponsorship pools with token info, ETH deposits, fees, volume, discount, APY, and gas price metrics
-- `transactions` table: Records token transfers with from/to addresses, amounts, fees, and pool references
+- `pools` table: Tracks gas sponsorship pools with token info, ETH deposits, fees, volume, discount, APY, gas price metrics, and blockchain metadata (contractAddress, tokenAddress, sponsor, chainId, blockNumber, transactionHash)
+- `transactions` table: Records token transfers with from/to addresses, amounts, fees, pool references, and blockchain metadata (tokenSymbol, blockNumber, chainId, transactionHash)
 - UUID primary keys with server-generated defaults
 - Decimal precision for financial data (18 decimals for amounts, proper precision for percentages)
 - Timestamps for audit trails
+- Blockchain fields enable event indexing and verification
 
 **Data Layer Pattern:**
 - Storage abstraction layer (`IStorage` interface) for testability
 - `DatabaseStorage` implementation using Drizzle ORM
 - Direct database queries without additional caching layer
-- Seed data for development with mock pools (DOGGO, USDC, RARE)
+- Delete methods (`deletePool`, `deleteTransaction`) for chain reorganization rollback
+- Seed data for development with mock pools (DOGGO, USDC, RARE) including Base mainnet metadata
+
+### Blockchain Integration
+
+**Smart Contracts (Base Mainnet):**
+- PaymasterFactory: Deploys new PaymasterPool instances for specific tokens
+- PaymasterPool: Manages ETH deposits, fee collection, and paymaster validation logic
+- ABIs extracted from Solidity and stored in `client/src/contracts/` directory
+- Deployment scripts in `scripts/` directory with proper event signatures
+- Contract helpers in `client/src/lib/contracts.ts` with address validation guards
+
+**Event Indexer:**
+- Real-time blockchain event listener using Viem's `watchContractEvent`
+- Monitors PaymasterFactory for PoolCreated events (0x33363435...)
+- Monitors PaymasterPool instances for Deposited, Withdrawn, and FeesClaimed events
+- Syncs events to database with full blockchain metadata (blockNumber, chainId, transactionHash)
+- Chain reorganization handling: deletes affected records and recalculates aggregates with bigint precision
+- Watcher lifecycle management: separate factory watcher and pool watchers to prevent leaks
+- Bigint math throughout (parseEther/formatEther) to avoid floating-point precision errors
+- Indexer starts automatically on server launch if VITE_PAYMASTER_FACTORY_ADDRESS is set
+
+**Wallet Connection:**
+- RainbowKit integration for one-click wallet connection
+- Configured for Base mainnet (chainId 8453)
+- ConnectButton in app header with address display and network switcher
+- Wagmi hooks for reading contract state and sending transactions
+- Viem for low-level contract interactions and event parsing
 
 ### External Dependencies
 
