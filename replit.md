@@ -28,6 +28,16 @@ Preferred communication style: Simple, everyday language.
 - Zero cognitive load: plain language over technical jargon
 - Scan-ability: quick parsing of pool data and opportunities
 
+**Semantic Color System (WCAG AA Compliant):**
+- Success (green) for positive states: discounts, profits, active pools
+  - Light mode: hsl(142, 71%, 28%) + white text (5.3:1 contrast)
+  - Dark mode: hsl(142, 70%, 50%) + dark green text (8.7:1 contrast)
+- Warning (orange) for attention states: low ETH alerts, caution indicators
+  - Light mode: hsl(38, 92%, 30%) + white text (5.4:1 contrast)
+  - Dark mode: hsl(38, 92%, 60%) + dark brown text (7.6:1 contrast)
+- All semantic colors registered in Tailwind config with border/foreground variants
+- Badge component provides success/warning/destructive variants (no manual hover overrides)
+
 **Component Structure:**
 - Modular component architecture with separation between UI primitives (`/components/ui`) and feature components
 - Landing page with value proposition, how-it-works, and CTA sections

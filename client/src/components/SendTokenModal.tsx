@@ -127,14 +127,16 @@ export default function SendTokenModal() {
               placeholder="0x1234...abcd or ENS name"
               value={recipient}
               onChange={(e) => setRecipient(e.target.value)}
+              className="h-12"
+              disabled={sendTokenMutation.isPending}
               data-testid="input-recipient"
             />
           </div>
 
           <div className="space-y-2">
             <Label htmlFor="token">Token</Label>
-            <Select value={selectedToken} onValueChange={setSelectedToken}>
-              <SelectTrigger id="token" data-testid="select-token">
+            <Select value={selectedToken} onValueChange={setSelectedToken} disabled={sendTokenMutation.isPending}>
+              <SelectTrigger id="token" className="h-12" data-testid="select-token">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -160,8 +162,9 @@ export default function SendTokenModal() {
               <Label htmlFor="amount">Amount</Label>
               <Button
                 variant="ghost"
-                size="sm"
+                className="h-12"
                 onClick={() => setAmount(mockBalances[selectedToken]?.replace(/,/g, "") || "")}
+                disabled={sendTokenMutation.isPending}
                 data-testid="button-max"
               >
                 Max
@@ -173,7 +176,8 @@ export default function SendTokenModal() {
               placeholder="0.00"
               value={amount}
               onChange={(e) => setAmount(e.target.value)}
-              className="font-mono text-lg"
+              className="font-mono text-lg h-12"
+              disabled={sendTokenMutation.isPending}
               data-testid="input-amount"
             />
           </div>
@@ -182,9 +186,6 @@ export default function SendTokenModal() {
             <div className="flex items-center gap-2">
               <Zap className="h-4 w-4 text-primary" />
               <span className="text-sm font-medium">Gas Paid by {selectedToken} Pool</span>
-              <Button variant="ghost" size="icon" className="h-5 w-5 ml-auto">
-                <Info className="h-3 w-3" />
-              </Button>
             </div>
             
             <div className="space-y-1 text-sm">
@@ -201,7 +202,7 @@ export default function SendTokenModal() {
 
           <Button
             onClick={handleSend}
-            className="w-full"
+            className="w-full h-12"
             size="lg"
             disabled={!amount || !recipient || sendTokenMutation.isPending}
             data-testid="button-confirm-send"
