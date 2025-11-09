@@ -66,16 +66,26 @@ async function main() {
   console.log(`🌐 Network: Base Mainnet`);
   console.log(`🔗 EntryPoint: ${ENTRY_POINT}\n`);
 
-  if (balance < parseEther('0.02')) {
-    console.error('❌ ERROR: Insufficient balance. Need at least 0.02 ETH for deployment.');
+  if (balance < parseEther('0.005')) {
+    console.error('❌ ERROR: Insufficient balance. Need at least 0.005 ETH for deployment.');
     process.exit(1);
+  }
+  
+  if (balance < parseEther('0.01')) {
+    console.warn('⚠️  WARNING: Balance is low. Deployment may fail if gas prices spike.');
   }
 
   // Confirm deployment
-  const confirm = await prompt('⚠️  Deploy to MAINNET? This will cost real ETH. Type "yes" to continue: ');
-  if (confirm.toLowerCase() !== 'yes') {
-    console.log('❌ Deployment cancelled.');
-    process.exit(0);
+  const autoConfirm = process.env.AUTO_CONFIRM === 'true';
+  if (!autoConfirm) {
+    const confirm = await prompt('⚠️  Deploy to MAINNET? This will cost real ETH. Type "yes" to continue: ');
+    if (confirm.toLowerCase() !== 'yes') {
+      console.log('❌ Deployment cancelled.');
+      rl.close();
+      process.exit(0);
+    }
+  } else {
+    console.log('✅ Auto-confirmed deployment to mainnet...');
   }
 
   // TODO: Replace this with actual compiled bytecode from Hardhat/Foundry
