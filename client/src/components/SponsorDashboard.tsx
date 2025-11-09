@@ -21,7 +21,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Plus, Settings, TrendingUp, Wallet } from "lucide-react";
+import { Plus, Settings, TrendingUp, TrendingDown, ArrowUp, ArrowDown, Wallet } from "lucide-react";
 import TokenIcon from "./TokenIcon";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import type { Pool } from "@shared/schema";
@@ -52,6 +52,11 @@ export default function SponsorDashboard() {
   const avgApy = myPools.length > 0
     ? (myPools.reduce((sum, pool) => sum + parseFloat(pool.apy || "0"), 0) / myPools.length).toFixed(1)
     : "0.0";
+  
+  // Mock trend calculations - in production, compare to previous period
+  const ethTrend = myPools.length > 0 ? "+12.5" : "0";
+  const feesTrend = parseFloat(totalFees) > 0 ? "+18.2" : "0";
+  const apyTrend = parseFloat(avgApy) > 5 ? "+2.4" : "-1.2";
 
   const createPoolMutation = useMutation({
     mutationFn: async (newPool: any) => {
@@ -219,39 +224,65 @@ export default function SponsorDashboard() {
         <Card>
           <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Total ETH</CardTitle>
-            <TrendingUp className="h-4 w-4 text-muted-foreground" />
+            <div className="rounded-full bg-muted p-1.5">
+              <TrendingUp className="h-3.5 w-3.5 text-muted-foreground" />
+            </div>
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold tabular-nums">{totalEth}</div>
-            <p className="text-xs text-muted-foreground">
-              Across {myPools.length} pools
-            </p>
+            <div className="flex items-center gap-1 mt-1">
+              <ArrowUp className="h-3 w-3 text-success" />
+              <p className="text-xs text-success font-medium">
+                {ethTrend}% this week
+              </p>
+            </div>
           </CardContent>
         </Card>
 
         <Card>
           <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Fees Earned</CardTitle>
-            <TrendingUp className="h-4 w-4 text-muted-foreground" />
+            <div className="rounded-full bg-muted p-1.5">
+              <TrendingUp className="h-3.5 w-3.5 text-muted-foreground" />
+            </div>
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold tabular-nums">{totalFees}</div>
-            <p className="text-xs text-green-500">
-              +18% this week
-            </p>
+            <div className="flex items-center gap-1 mt-1">
+              <ArrowUp className="h-3 w-3 text-success" />
+              <p className="text-xs text-success font-medium">
+                {feesTrend}% this week
+              </p>
+            </div>
           </CardContent>
         </Card>
 
         <Card>
           <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Avg APY</CardTitle>
-            <TrendingUp className="h-4 w-4 text-muted-foreground" />
+            <div className="rounded-full bg-muted p-1.5">
+              <TrendingUp className="h-3.5 w-3.5 text-muted-foreground" />
+            </div>
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold tabular-nums">{avgApy}%</div>
-            <p className="text-xs text-muted-foreground">
-              Annualized return
-            </p>
+            <div className="flex items-center gap-1 mt-1">
+              {parseFloat(apyTrend) > 0 ? (
+                <>
+                  <ArrowUp className="h-3 w-3 text-success" />
+                  <p className="text-xs text-success font-medium">
+                    {apyTrend}% vs last week
+                  </p>
+                </>
+              ) : (
+                <>
+                  <ArrowDown className="h-3 w-3 text-muted-foreground" />
+                  <p className="text-xs text-muted-foreground font-medium">
+                    {apyTrend}% vs last week
+                  </p>
+                </>
+              )}
+            </div>
           </CardContent>
         </Card>
       </div>
