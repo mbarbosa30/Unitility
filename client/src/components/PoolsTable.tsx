@@ -167,7 +167,8 @@ export default function PoolsTable() {
         </div>
       </CardHeader>
       <CardContent>
-        <div className="rounded-md border overflow-auto max-h-[600px]">
+        {/* Desktop table view */}
+        <div className="hidden md:block rounded-md border overflow-auto max-h-[600px]">
           <Table>
             <TableHeader>
               <TableRow>
@@ -250,6 +251,58 @@ export default function PoolsTable() {
               ))}
             </TableBody>
           </Table>
+        </div>
+
+        {/* Mobile card view */}
+        <div className="md:hidden space-y-3">
+          {sortedPools.map((pool) => (
+            <Card key={pool.id} className="hover-elevate" data-testid={`card-pool-${pool.id}`}>
+              <CardContent className="p-4">
+                <div className="flex items-start justify-between gap-3 mb-3">
+                  <div className="flex items-center gap-3">
+                    <TokenIcon symbol={pool.tokenSymbol} />
+                    <div className="flex flex-col">
+                      <span className="font-semibold">{pool.tokenSymbol}</span>
+                      <span className="text-xs text-muted-foreground">
+                        {pool.tokenName}
+                      </span>
+                    </div>
+                  </div>
+                  <DiscountBadge discount={parseFloat(pool.discount)} />
+                </div>
+
+                <div className="grid grid-cols-2 gap-3 mb-3">
+                  <div className="space-y-1">
+                    <p className="text-xs text-muted-foreground">Fee</p>
+                    <p className="font-mono text-sm font-medium">{pool.feePercentage}%</p>
+                  </div>
+                  <div className="space-y-1">
+                    <p className="text-xs text-muted-foreground">Gas Price</p>
+                    <p className="font-mono text-sm font-medium">{pool.gasPrice}</p>
+                  </div>
+                  <div className="space-y-1">
+                    <p className="text-xs text-muted-foreground">Volume</p>
+                    <p className="font-mono text-sm font-semibold">
+                      {formatVolume(pool.volume)}
+                    </p>
+                  </div>
+                  <div className="space-y-1">
+                    <p className="text-xs text-muted-foreground">APY</p>
+                    <p className="font-mono text-sm font-medium">{pool.apy}%</p>
+                  </div>
+                </div>
+
+                <Button 
+                  className="w-full" 
+                  variant="default" 
+                  data-testid={`button-send-mobile-${pool.tokenSymbol.toLowerCase()}`}
+                >
+                  <Send className="h-4 w-4 mr-2" />
+                  Send {pool.tokenSymbol}
+                </Button>
+              </CardContent>
+            </Card>
+          ))}
         </div>
       </CardContent>
     </Card>
