@@ -1,6 +1,8 @@
 import LandingHero from "@/components/LandingHero";
-import ValuePropositionSection from "@/components/ValuePropositionSection";
-import HowItWorksSection from "@/components/HowItWorksSection";
+import ProblemSection from "@/components/ProblemSection";
+import SolutionSection from "@/components/SolutionSection";
+import FDVSimulator from "@/components/FDVSimulator";
+import MetricsSection from "@/components/MetricsSection";
 import CTASection from "@/components/CTASection";
 import { useLocation } from "wouter";
 
@@ -14,8 +16,10 @@ export default function Landing() {
   return (
     <div className="min-h-screen">
       <LandingHero onGetStarted={handleGetStarted} />
-      <ValuePropositionSection />
-      <HowItWorksSection />
+      <ProblemSection />
+      <SolutionSection />
+      <FDVSimulator />
+      <MetricsSection />
       <CTASection onGetStarted={handleGetStarted} />
     </div>
   );

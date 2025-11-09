@@ -1,6 +1,5 @@
-import { ArrowRight, Zap } from "lucide-react";
+import { ArrowRight, TrendingUp, Wallet } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 
 interface LandingHeroProps {
   onGetStarted: () => void;
@@ -8,63 +7,59 @@ interface LandingHeroProps {
 
 export default function LandingHero({ onGetStarted }: LandingHeroProps) {
   return (
-    <section className="relative overflow-hidden">
-      <div className="absolute inset-0 bg-gradient-to-br from-primary/10 via-background to-background" />
+    <section className="relative overflow-hidden min-h-[90vh] flex items-center">
+      <div className="absolute inset-0 bg-gradient-to-br from-primary/5 via-background to-background" />
+      <div className="absolute inset-0 bg-[radial-gradient(circle_at_30%_20%,rgba(120,119,198,0.1),transparent_50%)]" />
       
-      <div className="container relative mx-auto px-4 py-20 md:py-32">
-        <div className="mx-auto max-w-4xl text-center space-y-8">
-          <Badge variant="secondary" className="gap-2 px-4 py-2 text-sm">
-            <Zap className="h-4 w-4" />
-            Powered by ERC-4337 Account Abstraction
-          </Badge>
+      <div className="container relative mx-auto px-4 py-16">
+        <div className="mx-auto max-w-5xl text-center space-y-10">
+          <div className="space-y-6">
+            <h1 className="text-5xl font-extrabold tracking-tight sm:text-6xl md:text-7xl lg:text-8xl leading-[1.1]">
+              Tokens Die in Wallets.
+              <br />
+              <span className="text-primary">Revive Them.</span>
+            </h1>
+            
+            <p className="mx-auto max-w-3xl text-xl text-foreground/90 md:text-2xl font-medium leading-relaxed">
+              Send any token gasless. Earn yield from every transfer. Price its true worth.
+            </p>
+          </div>
           
-          <h1 className="text-4xl font-bold tracking-tight sm:text-5xl md:text-6xl lg:text-7xl">
-            Every token should be as easy to send as a{" "}
-            <span className="text-primary">text message</span>
-          </h1>
-          
-          <p className="mx-auto max-w-2xl text-lg text-muted-foreground md:text-xl">
-            Send any token without ETH for gas. Paymaster Market turns every token into a 
-            self-sustaining, gasless utility layer where users send like Venmo, 
-            sponsors earn yield, and rebalancers profit.
-          </p>
-          
-          <div className="flex flex-col sm:flex-row gap-4 justify-center items-center">
+          <div className="flex flex-col sm:flex-row gap-4 justify-center items-center pt-4">
             <Button
               size="lg"
-              className="gap-2 text-lg px-8 py-6"
+              className="gap-2 text-lg px-10 py-7 font-bold"
               onClick={onGetStarted}
-              data-testid="button-hero-get-started"
+              data-testid="button-connect-send"
             >
-              Get Started
-              <ArrowRight className="h-5 w-5" />
+              <Wallet className="h-5 w-5" />
+              Connect & Send
             </Button>
             <Button
               size="lg"
               variant="outline"
-              className="gap-2 text-lg px-8 py-6"
-              data-testid="button-hero-learn-more"
+              className="gap-2 text-lg px-10 py-7 font-bold"
+              onClick={onGetStarted}
+              data-testid="button-sponsor-pool"
             >
-              Learn How It Works
+              <TrendingUp className="h-5 w-5" />
+              Sponsor a Pool
+              <ArrowRight className="h-5 w-5" />
             </Button>
           </div>
           
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-8 pt-12">
+          <div className="grid grid-cols-2 md:grid-cols-3 gap-6 md:gap-12 pt-16 max-w-3xl mx-auto">
             <div className="space-y-2">
-              <div className="text-3xl font-bold tabular-nums">100K+</div>
-              <div className="text-sm text-muted-foreground">Gasless Transfers</div>
+              <div className="text-4xl md:text-5xl font-extrabold tabular-nums text-primary" data-testid="text-proof-transfers">1M+</div>
+              <div className="text-sm md:text-base font-medium text-muted-foreground">transfers</div>
             </div>
             <div className="space-y-2">
-              <div className="text-3xl font-bold tabular-nums">50+</div>
-              <div className="text-sm text-muted-foreground">Active Pools</div>
+              <div className="text-4xl md:text-5xl font-extrabold tabular-nums text-primary" data-testid="text-proof-sponsored">$5M</div>
+              <div className="text-sm md:text-base font-medium text-muted-foreground">ETH sponsored</div>
             </div>
-            <div className="space-y-2">
-              <div className="text-3xl font-bold tabular-nums">500+</div>
-              <div className="text-sm text-muted-foreground">ETH Sponsored</div>
-            </div>
-            <div className="space-y-2">
-              <div className="text-3xl font-bold tabular-nums">$1M+</div>
-              <div className="text-sm text-muted-foreground">Arb Volume</div>
+            <div className="space-y-2 col-span-2 md:col-span-1">
+              <div className="text-4xl md:text-5xl font-extrabold tabular-nums text-primary" data-testid="text-proof-apy">25%</div>
+              <div className="text-sm md:text-base font-medium text-muted-foreground">avg APY</div>
             </div>
           </div>
         </div>
