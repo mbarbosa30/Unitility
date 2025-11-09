@@ -16,6 +16,7 @@ export interface IStorage {
   getAllTransactions(): Promise<Transaction[]>;
   getTransaction(id: string): Promise<Transaction | undefined>;
   getTransactionsByPoolId(poolId: string): Promise<Transaction[]>;
+  getTransactionByHash(transactionHash: string): Promise<Transaction | undefined>;
   createTransaction(transaction: InsertTransaction): Promise<Transaction>;
   deleteTransaction(id: string): Promise<void>;
 }
@@ -65,6 +66,11 @@ export class DatabaseStorage implements IStorage {
 
   async getTransactionsByPoolId(poolId: string): Promise<Transaction[]> {
     return await db.select().from(transactions).where(eq(transactions.poolId, poolId));
+  }
+
+  async getTransactionByHash(transactionHash: string): Promise<Transaction | undefined> {
+    const result = await db.select().from(transactions).where(eq(transactions.transactionHash, transactionHash));
+    return result[0];
   }
 
   async createTransaction(insertTransaction: InsertTransaction): Promise<Transaction> {

@@ -142,12 +142,10 @@ export class BlockchainIndexer {
           console.log('[Indexer] PoolCreated event removed (reorg):', log.transactionHash);
           
           // Remove pool and all its transactions from database
-          const pools = await storage.getAllPools();
-          const pool = pools.find((p) => p.transactionHash === log.transactionHash);
+          const pool = await storage.getPoolByTransactionHash(log.transactionHash);
           if (pool && pool.contractAddress) {
             // Delete all transactions associated with this pool
-            const allTxs = await storage.getAllTransactions();
-            const poolTxs = allTxs.filter((t) => t.poolId === pool.id);
+            const poolTxs = await storage.getTransactionsByPoolId(pool.id);
             for (const tx of poolTxs) {
               await storage.deleteTransaction(tx.id);
             }
@@ -214,12 +212,12 @@ export class BlockchainIndexer {
 
         // Create pool in database
         await storage.createPool({
-          contractAddress: poolAddress,
-          tokenAddress,
+          contractAddress: poolAddress.toLowerCase(),
+          tokenAddress: tokenAddress.toLowerCase(),
           tokenSymbol,
           tokenName,
           decimals,
-          sponsor,
+          sponsor: sponsor.toLowerCase(),
           feePercentage: (Number(feePct) / 100).toString(),
           ethDeposited: '0',
           feesEarned: '0',
@@ -250,21 +248,19 @@ export class BlockchainIndexer {
           console.log('[Indexer] Deposited event removed (reorg):', log.transactionHash);
           
           // Remove transaction from database
-          const allTxs = await storage.getAllTransactions();
-          const tx = allTxs.find((t) => t.transactionHash === log.transactionHash);
+          const tx = await storage.getTransactionByHash(log.transactionHash);
           if (tx) {
             await storage.deleteTransaction(tx.id);
             console.log('[Indexer] Reorg: Deposit transaction removed:', tx.id);
             
             // Recalculate pool balance from remaining transactions
             const poolAddress = log.address as `0x${string}`;
-            const pools = await storage.getAllPools();
-            const pool = pools.find((p) => p.contractAddress?.toLowerCase() === poolAddress.toLowerCase());
+            const pool = await storage.getPoolByContractAddress(poolAddress.toLowerCase());
             
             if (pool) {
               // Recalculate ETH balance from remaining deposit/withdrawal transactions using bigint
-              const poolTxs = allTxs.filter((t) => 
-                t.poolId === pool.id && 
+              const allPoolTxs = await storage.getTransactionsByPoolId(pool.id);
+              const poolTxs = allPoolTxs.filter((t) => 
                 t.id !== tx.id && 
                 t.tokenSymbol === 'ETH'
               );
@@ -299,8 +295,7 @@ export class BlockchainIndexer {
         });
 
         // Find pool
-        const pools = await storage.getAllPools();
-        const pool = pools.find((p) => p.contractAddress?.toLowerCase() === poolAddress.toLowerCase());
+        const pool = await storage.getPoolByContractAddress(poolAddress.toLowerCase());
 
         if (!pool) {
           console.error('[Indexer] Pool not found for deposit:', poolAddress);
@@ -309,8 +304,8 @@ export class BlockchainIndexer {
 
         // Store event in transactions table
         await storage.createTransaction({
-          fromAddress: from,
-          toAddress: poolAddress,
+          fromAddress: from.toLowerCase(),
+          toAddress: poolAddress.toLowerCase(),
           tokenSymbol: 'ETH',
           amount: formatEther(amount),
           fee: '0',
@@ -343,21 +338,19 @@ export class BlockchainIndexer {
           console.log('[Indexer] Withdrawn event removed (reorg):', log.transactionHash);
           
           // Remove transaction from database
-          const allTxs = await storage.getAllTransactions();
-          const tx = allTxs.find((t) => t.transactionHash === log.transactionHash);
+          const tx = await storage.getTransactionByHash(log.transactionHash);
           if (tx) {
             await storage.deleteTransaction(tx.id);
             console.log('[Indexer] Reorg: Withdrawal transaction removed:', tx.id);
             
             // Recalculate pool balance from remaining transactions
             const poolAddress = log.address as `0x${string}`;
-            const pools = await storage.getAllPools();
-            const pool = pools.find((p) => p.contractAddress?.toLowerCase() === poolAddress.toLowerCase());
+            const pool = await storage.getPoolByContractAddress(poolAddress.toLowerCase());
             
             if (pool) {
               // Recalculate ETH balance from remaining deposit/withdrawal transactions using bigint
-              const poolTxs = allTxs.filter((t) => 
-                t.poolId === pool.id && 
+              const allPoolTxs = await storage.getTransactionsByPoolId(pool.id);
+              const poolTxs = allPoolTxs.filter((t) => 
                 t.id !== tx.id && 
                 t.tokenSymbol === 'ETH'
               );
@@ -392,8 +385,7 @@ export class BlockchainIndexer {
         });
 
         // Find pool
-        const pools = await storage.getAllPools();
-        const pool = pools.find((p) => p.contractAddress?.toLowerCase() === poolAddress.toLowerCase());
+        const pool = await storage.getPoolByContractAddress(poolAddress.toLowerCase());
 
         if (!pool) {
           console.error('[Indexer] Pool not found for withdrawal:', poolAddress);
@@ -402,8 +394,8 @@ export class BlockchainIndexer {
 
         // Store event in transactions table
         await storage.createTransaction({
-          fromAddress: poolAddress,
-          toAddress: to,
+          fromAddress: poolAddress.toLowerCase(),
+          toAddress: to.toLowerCase(),
           tokenSymbol: 'ETH',
           amount: formatEther(amount),
           fee: '0',
@@ -436,21 +428,19 @@ export class BlockchainIndexer {
           console.log('[Indexer] FeesClaimed event removed (reorg):', log.transactionHash);
           
           // Remove transaction from database
-          const allTxs = await storage.getAllTransactions();
-          const tx = allTxs.find((t) => t.transactionHash === log.transactionHash);
+          const tx = await storage.getTransactionByHash(log.transactionHash);
           if (tx) {
             await storage.deleteTransaction(tx.id);
             console.log('[Indexer] Reorg: Fee claim transaction removed:', tx.id);
             
             // Recalculate fees from remaining transactions
             const poolAddress = log.address as `0x${string}`;
-            const pools = await storage.getAllPools();
-            const pool = pools.find((p) => p.contractAddress?.toLowerCase() === poolAddress.toLowerCase());
+            const pool = await storage.getPoolByContractAddress(poolAddress.toLowerCase());
             
             if (pool) {
               // Recalculate fees from remaining fee claim transactions using bigint
-              const feeTxs = allTxs.filter((t) => 
-                t.poolId === pool.id && 
+              const allPoolTxs = await storage.getTransactionsByPoolId(pool.id);
+              const feeTxs = allPoolTxs.filter((t) => 
                 t.id !== tx.id && 
                 t.fromAddress.toLowerCase() === poolAddress.toLowerCase() &&
                 t.tokenSymbol === pool.tokenSymbol
@@ -481,8 +471,7 @@ export class BlockchainIndexer {
         });
 
         // Find pool
-        const pools = await storage.getAllPools();
-        const pool = pools.find((p) => p.contractAddress?.toLowerCase() === poolAddress.toLowerCase());
+        const pool = await storage.getPoolByContractAddress(poolAddress.toLowerCase());
 
         if (!pool) {
           console.error('[Indexer] Pool not found for fee claim:', poolAddress);
@@ -491,8 +480,8 @@ export class BlockchainIndexer {
 
         // Store event in transactions table
         await storage.createTransaction({
-          fromAddress: poolAddress,
-          toAddress: sponsor,
+          fromAddress: poolAddress.toLowerCase(),
+          toAddress: sponsor.toLowerCase(),
           tokenSymbol: pool.tokenSymbol,
           amount: formatEther(amount),
           fee: '0',
@@ -525,21 +514,19 @@ export class BlockchainIndexer {
           console.log('[Indexer] UserOperationSponsored event removed (reorg):', log.transactionHash);
           
           // Remove transaction from database
-          const allTxs = await storage.getAllTransactions();
-          const tx = allTxs.find((t) => t.transactionHash === log.transactionHash);
+          const tx = await storage.getTransactionByHash(log.transactionHash);
           if (tx) {
             await storage.deleteTransaction(tx.id);
             console.log('[Indexer] Reorg: Gas cost transaction removed:', tx.id);
             
             // Recalculate cumulative gas burned from remaining transactions
             const poolAddress = log.address as `0x${string}`;
-            const pools = await storage.getAllPools();
-            const pool = pools.find((p) => p.contractAddress?.toLowerCase() === poolAddress.toLowerCase());
+            const pool = await storage.getPoolByContractAddress(poolAddress.toLowerCase());
             
             if (pool) {
               // Recalculate cumulative gas burned from remaining user op transactions using bigint
-              const userOpTxs = allTxs.filter((t) => 
-                t.poolId === pool.id && 
+              const allPoolTxs = await storage.getTransactionsByPoolId(pool.id);
+              const userOpTxs = allPoolTxs.filter((t) => 
                 t.id !== tx.id && 
                 t.gasCost !== null
               );
@@ -591,8 +578,7 @@ export class BlockchainIndexer {
         });
 
         // Find pool
-        const pools = await storage.getAllPools();
-        const pool = pools.find((p) => p.contractAddress?.toLowerCase() === poolAddress.toLowerCase());
+        const pool = await storage.getPoolByContractAddress(poolAddress.toLowerCase());
 
         if (!pool) {
           console.error('[Indexer] Pool not found for UserOperation:', poolAddress);
@@ -601,8 +587,8 @@ export class BlockchainIndexer {
 
         // Store gasless transfer in transactions table
         await storage.createTransaction({
-          fromAddress: sender,
-          toAddress: sender, // For now, we don't extract the recipient from calldata
+          fromAddress: sender.toLowerCase(),
+          toAddress: sender.toLowerCase(), // For now, we don't extract the recipient from calldata
           tokenSymbol: pool.tokenSymbol,
           amount: formatUnits(tokenFee, pool.decimals), // Token amount is the fee paid
           fee: formatUnits(tokenFee, pool.decimals),

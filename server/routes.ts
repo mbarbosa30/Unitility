@@ -28,7 +28,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post("/api/pools", async (req, res) => {
     try {
       // Validate required fields
-      const { tokenAddress, feePercentage, minTokensPerTransfer, ethDeposited } = req.body;
+      const { tokenAddress, contractAddress, sponsor, feePercentage, minTokensPerTransfer, ethDeposited } = req.body;
       
       if (!tokenAddress) {
         return res.status(400).json({ error: "Token address is required" });
@@ -46,7 +46,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ error: "ETH deposit must be greater than 0" });
       }
       
-      const pool = await storage.createPool(req.body);
+      // Normalize addresses to lowercase for consistent storage
+      const normalizedData = {
+        ...req.body,
+        tokenAddress: tokenAddress.toLowerCase(),
+        contractAddress: contractAddress ? contractAddress.toLowerCase() : undefined,
+        sponsor: sponsor ? sponsor.toLowerCase() : undefined,
+      };
+      
+      const pool = await storage.createPool(normalizedData);
       res.status(201).json(pool);
     } catch (error: any) {
       console.error("[API] Error creating pool:", error);
@@ -88,11 +96,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Create transaction (also updates pool atomically)
   app.post("/api/transactions", async (req, res) => {
-    const { poolId, fee, amount, ...transactionData } = req.body;
+    const { poolId, fee, amount, fromAddress, toAddress, ...transactionData } = req.body;
     
-    // Create transaction
+    // Create transaction with normalized addresses
     const transaction = await storage.createTransaction({
       ...transactionData,
+      fromAddress: fromAddress ? fromAddress.toLowerCase() : fromAddress,
+      toAddress: toAddress ? toAddress.toLowerCase() : toAddress,
       poolId,
       fee,
       amount,
