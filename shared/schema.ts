@@ -20,6 +20,10 @@ export const pools = pgTable("pools", {
   chainId: integer("chain_id"),
   blockNumber: integer("block_number"),
   transactionHash: text("transaction_hash"),
+  cumulativeGasBurned: decimal("cumulative_gas_burned", { precision: 18, scale: 6 }).notNull().default("0"),
+  totalSupply: decimal("total_supply", { precision: 30, scale: 0 }),
+  impliedPrice: decimal("implied_price", { precision: 18, scale: 12 }),
+  intendedFdv: decimal("intended_fdv", { precision: 30, scale: 6 }),
   createdAt: timestamp("created_at").defaultNow(),
 });
 
@@ -31,6 +35,7 @@ export const transactions = pgTable("transactions", {
   amount: decimal("amount", { precision: 18, scale: 6 }).notNull(),
   fee: decimal("fee", { precision: 18, scale: 6 }).notNull(),
   poolId: varchar("pool_id").notNull(),
+  gasCost: decimal("gas_cost", { precision: 18, scale: 6 }),
   transactionHash: text("transaction_hash"),
   blockNumber: integer("block_number"),
   chainId: integer("chain_id"),

@@ -122,7 +122,15 @@ export class BlockchainIndexer {
       onError: (error) => console.error('[Indexer] FeesClaimed event error:', error),
     });
 
-    this.poolWatchers.push(unwatchDeposited, unwatchWithdrawn, unwatchFeesClaimed);
+    // Watch UserOperationSponsored events from all pools (for gas cost tracking)
+    const unwatchUserOpSponsored = this.publicClient.watchEvent({
+      address: poolAddressArray,
+      event: parseAbiItem('event UserOperationSponsored(address indexed sender, uint256 actualGasCost, uint256 tokenFee)'),
+      onLogs: (logs) => this.handleUserOperationSponsoredLogs(logs),
+      onError: (error) => console.error('[Indexer] UserOperationSponsored event error:', error),
+    });
+
+    this.poolWatchers.push(unwatchDeposited, unwatchWithdrawn, unwatchFeesClaimed, unwatchUserOpSponsored);
     console.log(`[Indexer] Watching ${this.poolAddresses.size} pools for events`);
   }
 
@@ -475,6 +483,141 @@ export class BlockchainIndexer {
         console.log('[Indexer] Fee claim persisted and pool updated');
       } catch (error) {
         console.error('[Indexer] Error handling FeesClaimed event:', error);
+      }
+    }
+  }
+
+  private async handleUserOperationSponsoredLogs(logs: any[]) {
+    for (const log of logs) {
+      try {
+        // Handle chain reorganizations
+        if (log.removed) {
+          console.log('[Indexer] UserOperationSponsored event removed (reorg):', log.transactionHash);
+          
+          // Remove transaction from database
+          const allTxs = await storage.getAllTransactions();
+          const tx = allTxs.find((t) => t.transactionHash === log.transactionHash);
+          if (tx) {
+            await storage.deleteTransaction(tx.id);
+            console.log('[Indexer] Reorg: Gas cost transaction removed:', tx.id);
+            
+            // Recalculate cumulative gas burned from remaining transactions
+            const poolAddress = log.address as `0x${string}`;
+            const pools = await storage.getAllPools();
+            const pool = pools.find((p) => p.contractAddress?.toLowerCase() === poolAddress.toLowerCase());
+            
+            if (pool) {
+              // Recalculate cumulative gas burned from remaining user op transactions using bigint
+              const userOpTxs = allTxs.filter((t) => 
+                t.poolId === pool.id && 
+                t.id !== tx.id && 
+                t.gasCost !== null
+              );
+              
+              let totalGasBurnedWei = BigInt(0);
+              for (const userOpTx of userOpTxs) {
+                totalGasBurnedWei += parseEther(userOpTx.gasCost!);
+              }
+              
+              // Recalculate implied price and intended FDV
+              const feesEarnedWei = parseEther(pool.feesEarned || '0');
+              let impliedPrice: string | undefined;
+              let intendedFdv: string | undefined;
+              
+              if (feesEarnedWei > BigInt(0)) {
+                // P = B / T (ETH burned per token earned)
+                // Using 18 decimal precision for price calculation
+                const priceWei = (totalGasBurnedWei * parseEther('1')) / feesEarnedWei;
+                impliedPrice = formatEther(priceWei);
+                
+                // V = P × S (Intended FDV = price × total supply)
+                if (pool.totalSupply) {
+                  const totalSupply = BigInt(pool.totalSupply);
+                  const fdvWei = (priceWei * totalSupply) / parseEther('1');
+                  intendedFdv = formatEther(fdvWei);
+                }
+              }
+              
+              await storage.updatePool(pool.id, {
+                cumulativeGasBurned: formatEther(totalGasBurnedWei),
+                impliedPrice,
+                intendedFdv,
+              });
+              
+              console.log('[Indexer] Reorg: Cumulative gas burned recalculated:', pool.id);
+            }
+          }
+          continue;
+        }
+
+        const { sender, actualGasCost, tokenFee } = log.args;
+        const poolAddress = log.address;
+
+        console.log('[Indexer] UserOperation sponsored:', {
+          pool: poolAddress,
+          sender,
+          gasCost: actualGasCost.toString(),
+          tokenFee: tokenFee.toString(),
+        });
+
+        // Find pool
+        const pools = await storage.getAllPools();
+        const pool = pools.find((p) => p.contractAddress?.toLowerCase() === poolAddress.toLowerCase());
+
+        if (!pool) {
+          console.error('[Indexer] Pool not found for UserOperation:', poolAddress);
+          continue;
+        }
+
+        // Store gasless transfer in transactions table
+        await storage.createTransaction({
+          fromAddress: sender,
+          toAddress: sender, // For now, we don't extract the recipient from calldata
+          tokenSymbol: pool.tokenSymbol,
+          amount: formatEther(tokenFee), // Token amount is the fee paid
+          fee: formatEther(tokenFee),
+          poolId: pool.id,
+          gasCost: formatEther(actualGasCost),
+          transactionHash: log.transactionHash,
+          blockNumber: Number(log.blockNumber),
+          chainId: base.id,
+        });
+
+        // Update cumulative gas burned using bigint
+        const currentGasBurnedWei = parseEther(pool.cumulativeGasBurned || '0');
+        const totalGasBurnedWei = currentGasBurnedWei + actualGasCost;
+
+        // Update fees earned using bigint
+        const currentFeesWei = parseEther(pool.feesEarned || '0');
+        const totalFeesWei = currentFeesWei + tokenFee;
+
+        // Calculate implied price: P = B / T (ETH burned per token earned)
+        // Using 18 decimal precision for price calculation
+        let impliedPrice: string | undefined;
+        let intendedFdv: string | undefined;
+        
+        if (totalFeesWei > BigInt(0)) {
+          const priceWei = (totalGasBurnedWei * parseEther('1')) / totalFeesWei;
+          impliedPrice = formatEther(priceWei);
+          
+          // Calculate intended FDV: V = P × S
+          if (pool.totalSupply) {
+            const totalSupply = BigInt(pool.totalSupply);
+            const fdvWei = (priceWei * totalSupply) / parseEther('1');
+            intendedFdv = formatEther(fdvWei);
+          }
+        }
+
+        await storage.updatePool(pool.id, {
+          cumulativeGasBurned: formatEther(totalGasBurnedWei),
+          feesEarned: formatEther(totalFeesWei),
+          impliedPrice,
+          intendedFdv,
+        });
+
+        console.log('[Indexer] UserOperation persisted, gas tracking updated');
+      } catch (error) {
+        console.error('[Indexer] Error handling UserOperationSponsored event:', error);
       }
     }
   }
