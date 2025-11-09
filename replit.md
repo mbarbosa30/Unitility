@@ -97,6 +97,15 @@ Preferred communication style: Simple, everyday language.
 - Direct database queries without additional caching layer
 - Delete methods (`deletePool`, `deleteTransaction`) for chain reorganization rollback
 - Seed data for development with mock pools (DOGGO, USDC, RARE) including Base mainnet metadata
+- Indexed query methods: `getPoolByContractAddress()`, `getPoolByTransactionHash()`, `getTransactionsByPoolId()`, `getTransactionByHash()` for O(1) or O(log n) lookups
+
+**Database Performance:**
+- 8 B-tree indexes for efficient querying:
+  - Pools: contractAddress, transactionHash, blockNumber, createdAt
+  - Transactions: poolId, transactionHash, blockNumber, timestamp
+- Address normalization: All addresses stored in lowercase for consistent equality matching
+- Indexer uses targeted queries instead of full table scans (14 optimizations across event handlers)
+- Reorg handling optimized with indexed lookups (pool deletion, balance recalculation)
 
 ### Blockchain Integration
 
