@@ -1,4 +1,4 @@
-import { getContract } from 'viem';
+import { getContract, formatEther } from 'viem';
 import { base } from 'viem/chains';
 import PaymasterFactoryABI from '@/contracts/PaymasterFactory.json';
 import PaymasterPoolABI from '@/contracts/PaymasterPool.json';
@@ -57,3 +57,53 @@ export const shortenAddress = (address: string) => {
 export const getExplorerLink = (address: string, type: 'address' | 'tx' = 'address') => {
   return `${CHAIN_CONFIG.blockExplorer}/${type}/${address}`;
 };
+
+// Helper to read pool ETH balance from blockchain
+export async function getPoolEthBalance(
+  publicClient: any,
+  poolAddress: `0x${string}`
+): Promise<string | undefined> {
+  try {
+    const balance = await publicClient.getBalance({ address: poolAddress });
+    return formatEther(balance);
+  } catch (error) {
+    console.error('Error reading pool ETH balance:', error);
+    return undefined;
+  }
+}
+
+// Helper to read pool unclaimed fees from blockchain
+export async function getPoolUnclaimedFees(
+  publicClient: any,
+  poolAddress: `0x${string}`
+): Promise<string | undefined> {
+  try {
+    const unclaimedFees = await publicClient.readContract({
+      address: poolAddress,
+      abi: PaymasterPoolABI.abi,
+      functionName: 'unclaimedFees',
+    });
+    return formatEther(unclaimedFees as bigint);
+  } catch (error) {
+    console.error('Error reading pool unclaimed fees:', error);
+    return undefined;
+  }
+}
+
+// Helper to read pool fee percentage from blockchain
+export async function getPoolFeePercentage(
+  publicClient: any,
+  poolAddress: `0x${string}`
+): Promise<number> {
+  try {
+    const feePct = await publicClient.readContract({
+      address: poolAddress,
+      abi: PaymasterPoolABI.abi,
+      functionName: 'feePct',
+    });
+    return Number(feePct);
+  } catch (error) {
+    console.error('Error reading pool fee percentage:', error);
+    return 0;
+  }
+}

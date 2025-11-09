@@ -15,7 +15,114 @@ import TokenIcon from "./TokenIcon";
 import DiscountBadge from "./DiscountBadge";
 import { ArrowUpDown, Send, Inbox } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
+import { usePublicClient } from "wagmi";
+import { formatEther } from "viem";
+import PaymasterPoolABI from "@/contracts/PaymasterPool.json";
 import type { Pool } from "@shared/schema";
+
+// Component for individual pool row that reads blockchain data
+function PoolRow({ pool, formatVolume }: { pool: Pool; formatVolume: (v: string) => string }) {
+  const publicClient = usePublicClient();
+  
+  // Read ETH balance
+  const { data: ethBalance } = useQuery({
+    queryKey: ['pool-balance', pool.contractAddress],
+    queryFn: async () => {
+      if (!publicClient || !pool.contractAddress) return undefined;
+      try {
+        const balance = await publicClient.getBalance({ 
+          address: pool.contractAddress as `0x${string}` 
+        });
+        return formatEther(balance);
+      } catch (error) {
+        console.error('Error reading ETH balance for', pool.tokenSymbol, error);
+        return undefined;
+      }
+    },
+    enabled: !!publicClient && !!pool.contractAddress,
+    staleTime: 30000, // 30 seconds
+    retry: 2,
+  });
+
+  // Read unclaimed fees
+  const { data: unclaimedFees } = useQuery({
+    queryKey: ['pool-fees', pool.contractAddress],
+    queryFn: async () => {
+      if (!publicClient || !pool.contractAddress) return undefined;
+      try {
+        const fees = await publicClient.readContract({
+          address: pool.contractAddress as `0x${string}`,
+          abi: PaymasterPoolABI.abi,
+          functionName: 'unclaimedFees',
+        });
+        return formatEther(fees as bigint);
+      } catch (error) {
+        console.error('Error reading unclaimed fees for', pool.tokenSymbol, error);
+        return undefined;
+      }
+    },
+    enabled: !!publicClient && !!pool.contractAddress,
+    staleTime: 30000,
+    retry: 2,
+  });
+
+  // Use blockchain data if available, otherwise fall back to database values
+  const displayEthBalance = ethBalance !== undefined 
+    ? parseFloat(ethBalance).toFixed(2) 
+    : pool.ethDeposited;
+  const displayFees = unclaimedFees !== undefined 
+    ? parseFloat(unclaimedFees).toFixed(2) 
+    : pool.feesEarned;
+
+  return (
+    <TableRow key={pool.id} data-testid={`row-pool-${pool.tokenSymbol}`}>
+      <TableCell>
+        <div className="flex items-center gap-3">
+          <TokenIcon symbol={pool.tokenSymbol} />
+          <div className="flex flex-col">
+            <span className="font-semibold" data-testid={`text-token-${pool.tokenSymbol}`}>
+              {pool.tokenSymbol}
+            </span>
+            <span className="text-xs text-muted-foreground">
+              {pool.tokenName}
+            </span>
+          </div>
+        </div>
+      </TableCell>
+      <TableCell>
+        <Badge variant="secondary" data-testid={`text-fee-${pool.tokenSymbol}`}>
+          {pool.feePercentage}%
+        </Badge>
+      </TableCell>
+      <TableCell className="font-mono text-sm text-muted-foreground" data-testid={`text-gas-${pool.tokenSymbol}`}>
+        {pool.gasPrice} gwei
+      </TableCell>
+      <TableCell>
+        <DiscountBadge discount={parseFloat(pool.discount)} />
+      </TableCell>
+      <TableCell className="text-right">
+        <div className="flex flex-col gap-0.5">
+          <span className="font-mono" data-testid={`text-volume-${pool.tokenSymbol}`}>
+            ${formatVolume(pool.volume)}
+          </span>
+          <span className="text-xs text-muted-foreground">
+            {displayEthBalance} ETH
+          </span>
+        </div>
+      </TableCell>
+      <TableCell className="text-right">
+        <Button 
+          size="sm" 
+          className="gap-2" 
+          data-testid={`button-send-${pool.tokenSymbol}`}
+        >
+          <Send className="h-3.5 w-3.5" />
+          Send
+        </Button>
+      </TableCell>
+    </TableRow>
+  );
+}
 
 export default function PoolsTable() {
   const [sortBy, setSortBy] = useState<"volume" | "discount" | "fee">("volume");
@@ -215,39 +322,7 @@ export default function PoolsTable() {
             </TableHeader>
             <TableBody>
               {sortedPools.map((pool) => (
-                <TableRow key={pool.id} className="hover-elevate" data-testid={`row-pool-${pool.id}`}>
-                  <TableCell>
-                    <div className="flex items-center gap-3">
-                      <TokenIcon symbol={pool.tokenSymbol} />
-                      <div className="flex flex-col">
-                        <span className="font-semibold">{pool.tokenSymbol}</span>
-                        <span className="text-xs text-muted-foreground">
-                          {pool.tokenName}
-                        </span>
-                      </div>
-                    </div>
-                  </TableCell>
-                  <TableCell>
-                    <span className="font-mono text-sm">{pool.feePercentage}%</span>
-                  </TableCell>
-                  <TableCell>
-                    <span className="font-mono text-sm">{pool.gasPrice}</span>
-                  </TableCell>
-                  <TableCell>
-                    <DiscountBadge discount={parseFloat(pool.discount)} />
-                  </TableCell>
-                  <TableCell className="text-right">
-                    <span className="font-mono font-semibold">
-                      {formatVolume(pool.volume)}
-                    </span>
-                  </TableCell>
-                  <TableCell className="text-right">
-                    <Button size="sm" variant="ghost" data-testid={`button-send-${pool.tokenSymbol.toLowerCase()}`}>
-                      <Send className="h-3 w-3 mr-1" />
-                      Send
-                    </Button>
-                  </TableCell>
-                </TableRow>
+                <PoolRow key={pool.id} pool={pool} formatVolume={formatVolume} />
               ))}
             </TableBody>
           </Table>
