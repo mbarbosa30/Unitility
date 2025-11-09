@@ -101,7 +101,7 @@ export class BlockchainIndexer {
     // Watch Deposited events from all pools
     const unwatchDeposited = this.publicClient.watchEvent({
       address: poolAddressArray,
-      event: parseAbiItem('event Deposited(address indexed sponsor, uint256 amount, uint256 newTotal)'),
+      event: parseAbiItem('event Deposited(address indexed from, uint256 amount)'),
       onLogs: (logs) => this.handleDepositedLogs(logs),
       onError: (error) => console.error('[Indexer] Deposited event error:', error),
     });
@@ -109,7 +109,7 @@ export class BlockchainIndexer {
     // Watch Withdrawn events from all pools
     const unwatchWithdrawn = this.publicClient.watchEvent({
       address: poolAddressArray,
-      event: parseAbiItem('event Withdrawn(address indexed sponsor, uint256 amount, uint256 newTotal)'),
+      event: parseAbiItem('event Withdrawn(address indexed to, uint256 amount)'),
       onLogs: (logs) => this.handleWithdrawnLogs(logs),
       onError: (error) => console.error('[Indexer] Withdrawn event error:', error),
     });
@@ -117,7 +117,7 @@ export class BlockchainIndexer {
     // Watch FeesClaimed events from all pools
     const unwatchFeesClaimed = this.publicClient.watchEvent({
       address: poolAddressArray,
-      event: parseAbiItem('event FeesClaimed(address indexed sponsor, uint256 amountToken, uint256 amountETH)'),
+      event: parseAbiItem('event FeesClaimed(address indexed sponsor, uint256 amount)'),
       onLogs: (logs) => this.handleFeesClaimedLogs(logs),
       onError: (error) => console.error('[Indexer] FeesClaimed event error:', error),
     });
@@ -251,14 +251,13 @@ export class BlockchainIndexer {
           continue;
         }
 
-        const { sponsor, amount, newTotal } = log.args;
+        const { from, amount } = log.args;
         const poolAddress = log.address;
 
         console.log('[Indexer] Deposit event:', {
           pool: poolAddress,
-          sponsor,
+          from,
           amount: amount.toString(),
-          newTotal: newTotal.toString(),
         });
 
         // Find pool
@@ -272,7 +271,7 @@ export class BlockchainIndexer {
 
         // Store event in transactions table
         await storage.createTransaction({
-          fromAddress: sponsor,
+          fromAddress: from,
           toAddress: poolAddress,
           tokenSymbol: 'ETH',
           amount: formatEther(amount),
@@ -283,9 +282,12 @@ export class BlockchainIndexer {
           chainId: base.id,
         });
 
-        // Update pool ETH balance
+        // Calculate new balance by adding deposit amount
+        const currentBalance = parseEther(pool.ethDeposited || '0');
+        const newBalance = currentBalance + amount;
+        
         await storage.updatePool(pool.id, {
-          ethDeposited: formatEther(newTotal),
+          ethDeposited: formatEther(newBalance),
         });
 
         console.log('[Indexer] Deposit persisted and pool updated');
@@ -342,14 +344,13 @@ export class BlockchainIndexer {
           continue;
         }
 
-        const { sponsor, amount, newTotal } = log.args;
+        const { to, amount } = log.args;
         const poolAddress = log.address;
 
         console.log('[Indexer] Withdrawal event:', {
           pool: poolAddress,
-          sponsor,
+          to,
           amount: amount.toString(),
-          newTotal: newTotal.toString(),
         });
 
         // Find pool
@@ -364,7 +365,7 @@ export class BlockchainIndexer {
         // Store event in transactions table
         await storage.createTransaction({
           fromAddress: poolAddress,
-          toAddress: sponsor,
+          toAddress: to,
           tokenSymbol: 'ETH',
           amount: formatEther(amount),
           fee: '0',
@@ -374,9 +375,12 @@ export class BlockchainIndexer {
           chainId: base.id,
         });
 
-        // Update pool ETH balance
+        // Calculate new balance by subtracting withdrawal amount
+        const currentBalance = parseEther(pool.ethDeposited || '0');
+        const newBalance = currentBalance - amount;
+        
         await storage.updatePool(pool.id, {
-          ethDeposited: formatEther(newTotal),
+          ethDeposited: formatEther(newBalance),
         });
 
         console.log('[Indexer] Withdrawal persisted and pool updated');
@@ -429,14 +433,13 @@ export class BlockchainIndexer {
           continue;
         }
 
-        const { sponsor, amountToken, amountETH } = log.args;
+        const { sponsor, amount } = log.args;
         const poolAddress = log.address;
 
         console.log('[Indexer] Fees claimed:', {
           pool: poolAddress,
           sponsor,
-          tokenAmount: amountToken.toString(),
-          ethAmount: amountETH.toString(),
+          amount: amount.toString(),
         });
 
         // Find pool
@@ -453,8 +456,8 @@ export class BlockchainIndexer {
           fromAddress: poolAddress,
           toAddress: sponsor,
           tokenSymbol: pool.tokenSymbol,
-          amount: formatEther(amountToken),
-          fee: formatEther(amountETH),
+          amount: formatEther(amount),
+          fee: '0',
           poolId: pool.id,
           transactionHash: log.transactionHash,
           blockNumber: Number(log.blockNumber),
@@ -463,7 +466,7 @@ export class BlockchainIndexer {
 
         // Update pool fees earned (cumulative) using bigint
         const currentFeesWei = parseEther(pool.feesEarned || '0');
-        const totalFeesWei = currentFeesWei + amountToken;
+        const totalFeesWei = currentFeesWei + amount;
 
         await storage.updatePool(pool.id, {
           feesEarned: formatEther(totalFeesWei),
