@@ -10,6 +10,7 @@ import '@rainbow-me/rainbowkit/styles.css';
 import Header from "@/components/Header";
 import Landing from "@/pages/Landing";
 import Home from "@/pages/Home";
+import Analytics from "@/pages/analytics";
 import NotFound from "@/pages/not-found";
 
 function Router() {
@@ -17,6 +18,7 @@ function Router() {
     <Switch>
       <Route path="/" component={Landing} />
       <Route path="/app" component={Home} />
+      <Route path="/analytics" component={Analytics} />
       <Route component={NotFound} />
     </Switch>
   );
