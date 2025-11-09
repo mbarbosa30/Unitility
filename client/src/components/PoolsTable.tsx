@@ -140,12 +140,12 @@ export default function PoolsTable() {
         </div>
       </CardHeader>
       <CardContent>
-        <div className="rounded-md border">
+        <div className="rounded-md border overflow-auto max-h-[600px]">
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Token</TableHead>
-                <TableHead>
+                <TableHead className="sticky top-0 z-50 bg-card">Token</TableHead>
+                <TableHead className="sticky top-0 z-50 bg-card">
                   <Button
                     variant="ghost"
                     size="sm"
@@ -157,8 +157,8 @@ export default function PoolsTable() {
                     <ArrowUpDown className="h-3 w-3" />
                   </Button>
                 </TableHead>
-                <TableHead>Gas</TableHead>
-                <TableHead>
+                <TableHead className="sticky top-0 z-50 bg-card">Gas</TableHead>
+                <TableHead className="sticky top-0 z-50 bg-card">
                   <Button
                     variant="ghost"
                     size="sm"
@@ -170,7 +170,7 @@ export default function PoolsTable() {
                     <ArrowUpDown className="h-3 w-3" />
                   </Button>
                 </TableHead>
-                <TableHead className="text-right">
+                <TableHead className="sticky top-0 z-50 text-right bg-card">
                   <Button
                     variant="ghost"
                     size="sm"
@@ -182,7 +182,7 @@ export default function PoolsTable() {
                     <ArrowUpDown className="h-3 w-3" />
                   </Button>
                 </TableHead>
-                <TableHead className="text-right">Actions</TableHead>
+                <TableHead className="sticky top-0 z-50 text-right bg-card">Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
