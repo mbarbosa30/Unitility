@@ -140,22 +140,31 @@ export function calculateUtilizationRate(gasBurned: string, ethDeposited: string
  * @param pool Pool data
  * @param ethPriceUSD Current ETH price in USD (optional)
  * @param spotPrice Current spot price from DEX (optional)
+ * @param recomputedImpliedPrice Freshly calculated implied price (overrides pool.impliedPrice)
+ * @param recomputedIntendedFdv Freshly calculated intended FDV (overrides pool.intendedFdv)
  * @returns Complete valuation metrics
  */
 export function getPoolValuationMetrics(
   pool: Pool,
   ethPriceUSD?: number,
-  spotPrice?: string
+  spotPrice?: string,
+  recomputedImpliedPrice?: string | null,
+  recomputedIntendedFdv?: string | null
 ): ValuationMetrics {
-  const impliedPrice = pool.impliedPrice || 
-    calculateImpliedPrice(pool.cumulativeGasBurned, pool.feesEarned) || 
-    '0';
+  // Use recomputed values if provided, otherwise fall back to database values or calculate fresh
+  const impliedPrice = recomputedImpliedPrice !== undefined
+    ? (recomputedImpliedPrice || '0')
+    : (pool.impliedPrice || 
+        calculateImpliedPrice(pool.cumulativeGasBurned, pool.feesEarned) || 
+        '0');
 
-  const intendedFdv = pool.intendedFdv || 
-    (pool.totalSupply && impliedPrice !== '0' 
-      ? calculateIntendedFdv(impliedPrice, pool.totalSupply) 
-      : null) || 
-    '0';
+  const intendedFdv = recomputedIntendedFdv !== undefined
+    ? (recomputedIntendedFdv || '0')
+    : (pool.intendedFdv || 
+        (pool.totalSupply && impliedPrice !== '0' 
+          ? calculateIntendedFdv(impliedPrice, pool.totalSupply) 
+          : null) || 
+        '0');
 
   let spotFdv: string | null = null;
   if (spotPrice && pool.totalSupply) {

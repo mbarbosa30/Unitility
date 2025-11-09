@@ -119,7 +119,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
     // TODO: Get ETH price in USD (Chainlink or DEX)
     const ethPriceUSD = undefined; // Placeholder
 
-    const metrics = getPoolValuationMetrics(pool, ethPriceUSD, spotPrice || undefined);
+    // Pass recomputed values to ensure correctness after chain reorgs or drift
+    const metrics = getPoolValuationMetrics(
+      pool, 
+      ethPriceUSD, 
+      spotPrice || undefined,
+      recomputedImpliedPrice,
+      recomputedIntendedFdv
+    );
 
     res.json({
       poolId: pool.id,
