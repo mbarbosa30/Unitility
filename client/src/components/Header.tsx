@@ -1,11 +1,10 @@
-import { Wallet, Moon, Sun } from "lucide-react";
+import { Moon, Sun } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { ConnectButton } from '@rainbow-me/rainbowkit';
 import { useState, useEffect } from "react";
 
 export default function Header() {
   const [darkMode, setDarkMode] = useState(false);
-  const [walletConnected, setWalletConnected] = useState(false);
-  const [walletAddress, setWalletAddress] = useState("");
 
   useEffect(() => {
     const isDark = document.documentElement.classList.contains("dark");
@@ -16,19 +15,6 @@ export default function Header() {
     const newMode = !darkMode;
     setDarkMode(newMode);
     document.documentElement.classList.toggle("dark", newMode);
-  };
-
-  const connectWallet = () => {
-    // Mock wallet connection
-    if (!walletConnected) {
-      setWalletConnected(true);
-      setWalletAddress("0x1234...abcd");
-      console.log("Wallet connected");
-    } else {
-      setWalletConnected(false);
-      setWalletAddress("");
-      console.log("Wallet disconnected");
-    }
   };
 
   return (
@@ -55,17 +41,7 @@ export default function Header() {
             {darkMode ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
           </Button>
           
-          <Button
-            variant={walletConnected ? "secondary" : "default"}
-            onClick={connectWallet}
-            data-testid="button-connect-wallet"
-            className="gap-2"
-          >
-            <Wallet className="h-4 w-4" />
-            <span className="hidden sm:inline">
-              {walletConnected ? walletAddress : "Connect Wallet"}
-            </span>
-          </Button>
+          <ConnectButton />
         </div>
       </div>
     </header>
