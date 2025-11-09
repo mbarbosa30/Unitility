@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -24,6 +24,12 @@ import { useToast } from "@/hooks/use-toast";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import type { Pool } from "@shared/schema";
 import { apiRequest, queryClient } from "@/lib/queryClient";
+import { useAccount, useSignMessage, usePublicClient } from "wagmi";
+import { parseEther, type Address, type Hex } from "viem";
+import { buildUserOp, getUserOpHash, signUserOp, ENTRY_POINT_ADDRESS } from "@/lib/userOp";
+import { bundlerClient } from "@/lib/bundler";
+import { setupSimpleAccount } from "@/lib/simpleAccount";
+import { base } from "viem/chains";
 
 export default function SendTokenModal() {
   const [open, setOpen] = useState(false);
@@ -32,11 +38,16 @@ export default function SendTokenModal() {
   const [recipient, setRecipient] = useState("");
   const { toast } = useToast();
 
+  // Wagmi hooks for wallet connection
+  const { address, isConnected } = useAccount();
+  const { signMessageAsync } = useSignMessage();
+  const publicClient = usePublicClient();
+
   const { data: pools } = useQuery<Pool[]>({
     queryKey: ["/api/pools"],
   });
 
-  //todo: remove mock functionality - wallet balances
+  // TODO: Replace with actual wallet token balances using wagmi/viem
   const mockBalances: Record<string, string> = {
     DOGGO: "1240.00",
     USDC: "500.00",
@@ -49,25 +60,102 @@ export default function SendTokenModal() {
   const youSend = amount ? (parseFloat(amount) - parseFloat(fee)).toFixed(4) : "0.00";
 
   const sendTokenMutation = useMutation({
-    mutationFn: async ({ transaction }: { transaction: any }) => {
-      // Backend handles pool updates atomically
-      const res = await apiRequest("POST", "/api/transactions", transaction);
-      return await res.json();
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/pools"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/transactions"] });
-      toast({
-        title: "Transaction Submitted",
-        description: `Sending ${youSend} ${selectedToken} (${fee} ${selectedToken} fee)`,
+    mutationFn: async ({ 
+      recipientAddress, 
+      tokenAddress, 
+      paymasterAddress,
+      amountInTokens,
+      poolId 
+    }: { 
+      recipientAddress: Address;
+      tokenAddress: Address;
+      paymasterAddress: Address;
+      amountInTokens: string;
+      poolId: string;
+    }) => {
+      if (!address || !isConnected || !publicClient) {
+        throw new Error("Please connect your wallet to send tokens");
+      }
+
+      // Setup SimpleAccount: get address, nonce, and initCode (if not deployed)
+      const { accountAddress, initCode, nonce, isDeployed } = await setupSimpleAccount(
+        address,
+        publicClient
+      );
+      
+      // Convert token amount to bigint (assuming 18 decimals)
+      const amountBigInt = parseEther(amountInTokens);
+      
+      // Step 1: Build unsigned UserOperation
+      const unsignedUserOp = buildUserOp({
+        account: accountAddress,
+        nonce,
+        tokenAddress,
+        recipientAddress,
+        amount: amountBigInt,
+        paymasterAddress,
       });
+      
+      // Override initCode if account not deployed
+      if (!isDeployed) {
+        unsignedUserOp.initCode = initCode;
+      }
+      
+      // Step 2: Get hash for signing
+      const userOpHash = getUserOpHash(unsignedUserOp, ENTRY_POINT_ADDRESS, base.id);
+      
+      // Step 3: Sign the hash with connected wallet
+      const signature = await signMessageAsync({ message: { raw: userOpHash as Hex } });
+      
+      // Step 4: Attach signature to create complete UserOperation
+      const signedUserOp = signUserOp(unsignedUserOp, signature);
+      
+      // Step 5: Submit to bundler
+      const userOpHashResult = await bundlerClient.sendUserOperation(
+        signedUserOp,
+        ENTRY_POINT_ADDRESS
+      );
+      
+      // Step 6: Wait for receipt (with 30s timeout)
+      const receipt = await bundlerClient.waitForUserOperationReceipt(userOpHashResult);
+      
+      if (!receipt.success) {
+        throw new Error(receipt.reason || "UserOperation failed");
+      }
+      
+      // Step 7: Record transaction in backend for tracking
+      await apiRequest("POST", "/api/transactions", {
+        fromAddress: accountAddress,
+        toAddress: recipientAddress,
+        tokenSymbol: selectedToken,
+        amount: amountInTokens,
+        fee: fee,
+        poolId,
+        transactionHash: receipt.receipt.transactionHash,
+        blockNumber: receipt.receipt.blockNumber.toString(),
+      });
+      
+      return receipt;
+    },
+    onSuccess: (receipt) => {
+      // Invalidate queries in useEffect to avoid state update during render
+      setTimeout(() => {
+        queryClient.invalidateQueries({ queryKey: ["/api/pools"] });
+        queryClient.invalidateQueries({ queryKey: ["/api/transactions"] });
+      }, 0);
+      
+      toast({
+        title: "Transaction Confirmed",
+        description: `Sent ${youSend} ${selectedToken} (${fee} ${selectedToken} fee)`,
+      });
+      
       setOpen(false);
       setAmount("");
       setRecipient("");
     },
     onError: (error: any) => {
       toast({
-        title: "Error",
+        title: "Transaction Failed",
         description: error.message || "Failed to send transaction",
         variant: "destructive",
       });
@@ -84,22 +172,31 @@ export default function SendTokenModal() {
       return;
     }
 
-    // Capture current values to avoid stale closures
-    const currentFee = fee;
-    const currentYouSend = youSend;
-    const currentRecipient = recipient;
-    const currentPoolId = currentPool.id;
-    const currentToken = selectedToken;
+    if (!isConnected || !address) {
+      toast({
+        title: "Wallet Not Connected",
+        description: "Please connect your wallet to send tokens",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    // Validate recipient address format
+    if (!recipient.startsWith("0x") || recipient.length !== 42) {
+      toast({
+        title: "Invalid Address",
+        description: "Please enter a valid Ethereum address (0x...)",
+        variant: "destructive",
+      });
+      return;
+    }
 
     sendTokenMutation.mutate({
-      transaction: {
-        fromAddress: "0x742d35Cc6634C0532925a3b844Bc9e7595f0bEb", // Mock wallet address
-        toAddress: currentRecipient,
-        tokenSymbol: currentToken,
-        amount: currentYouSend,
-        fee: currentFee,
-        poolId: currentPoolId,
-      },
+      recipientAddress: recipient as Address,
+      tokenAddress: currentPool.tokenAddress as Address,
+      paymasterAddress: currentPool.contractAddress as Address,
+      amountInTokens: amount,
+      poolId: currentPool.id,
     });
   };
 
