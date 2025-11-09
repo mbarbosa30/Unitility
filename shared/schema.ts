@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { pgTable, text, varchar, decimal, integer, timestamp } from "drizzle-orm/pg-core";
+import { pgTable, text, varchar, decimal, integer, timestamp, index } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -27,7 +27,12 @@ export const pools = pgTable("pools", {
   impliedPrice: decimal("implied_price", { precision: 18, scale: 12 }),
   intendedFdv: decimal("intended_fdv", { precision: 30, scale: 6 }),
   createdAt: timestamp("created_at").defaultNow(),
-});
+}, (table) => ({
+  contractAddressIdx: index("pools_contract_address_idx").on(table.contractAddress),
+  transactionHashIdx: index("pools_transaction_hash_idx").on(table.transactionHash),
+  blockNumberIdx: index("pools_block_number_idx").on(table.blockNumber),
+  createdAtIdx: index("pools_created_at_idx").on(table.createdAt),
+}));
 
 export const transactions = pgTable("transactions", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
@@ -42,7 +47,12 @@ export const transactions = pgTable("transactions", {
   blockNumber: integer("block_number"),
   chainId: integer("chain_id"),
   timestamp: timestamp("timestamp").defaultNow(),
-});
+}, (table) => ({
+  poolIdIdx: index("transactions_pool_id_idx").on(table.poolId),
+  transactionHashIdx: index("transactions_transaction_hash_idx").on(table.transactionHash),
+  blockNumberIdx: index("transactions_block_number_idx").on(table.blockNumber),
+  timestampIdx: index("transactions_timestamp_idx").on(table.timestamp),
+}));
 
 export const insertPoolSchema = createInsertSchema(pools).omit({
   id: true,
