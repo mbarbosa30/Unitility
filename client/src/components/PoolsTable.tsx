@@ -90,9 +90,14 @@ function PoolRow({ pool, formatVolume }: { pool: Pool; formatVolume: (v: string)
         </div>
       </TableCell>
       <TableCell>
-        <Badge variant="secondary" data-testid={`text-fee-${pool.tokenSymbol}`}>
-          {pool.feePercentage}%
-        </Badge>
+        <div className="flex flex-col gap-0.5">
+          <Badge variant="secondary" data-testid={`text-fee-${pool.tokenSymbol}`}>
+            {pool.feePercentage}%
+          </Badge>
+          <span className="text-xs text-muted-foreground">
+            Min: {parseFloat(pool.minTokensPerTransfer)} {pool.tokenSymbol}
+          </span>
+        </div>
       </TableCell>
       <TableCell className="font-mono text-sm text-muted-foreground" data-testid={`text-gas-${pool.tokenSymbol}`}>
         {pool.gasPrice} gwei

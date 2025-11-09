@@ -513,8 +513,8 @@ export default function SponsorDashboard() {
                         id="token-address"
                         placeholder="0x..."
                         value={tokenAddress}
-                        onChange={(e) => {
-                          setTokenAddress(e.target.value);
+                        onChange={(e) => setTokenAddress(e.target.value)}
+                        onBlur={(e) => {
                           if (isAddress(e.target.value)) {
                             fetchTokenMetadata(e.target.value);
                           }
