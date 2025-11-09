@@ -6,11 +6,12 @@ import { z } from "zod";
 export const pools = pgTable("pools", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   contractAddress: text("contract_address"),
-  tokenAddress: text("token_address"),
+  tokenAddress: text("token_address").notNull(),
   tokenSymbol: text("token_symbol").notNull(),
   tokenName: text("token_name").notNull(),
   decimals: integer("decimals").notNull().default(18),
   feePercentage: decimal("fee_percentage", { precision: 5, scale: 2 }).notNull(),
+  minTokensPerTransfer: decimal("min_tokens_per_transfer", { precision: 18, scale: 6 }).notNull().default("1"),
   ethDeposited: decimal("eth_deposited", { precision: 18, scale: 6 }).notNull(),
   feesEarned: decimal("fees_earned", { precision: 18, scale: 6 }).notNull(),
   volume: decimal("volume", { precision: 18, scale: 2 }).notNull(),
