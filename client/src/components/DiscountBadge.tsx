@@ -10,8 +10,8 @@ export default function DiscountBadge({ discount }: DiscountBadgeProps) {
   
   return (
     <Badge
-      variant={isDiscount ? "default" : "secondary"}
-      className={`gap-1 ${isDiscount ? "bg-green-500 hover:bg-green-600 text-white" : ""}`}
+      variant={isDiscount ? "success" : "destructive"}
+      className="gap-1"
       data-testid="badge-discount"
     >
       {isDiscount ? (

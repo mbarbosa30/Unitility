@@ -34,6 +34,10 @@
   --muted-foreground: 210 8% 35%;
   --accent: 210 10% 90%;
   --accent-foreground: 210 10% 15%;
+  --success: 142 71% 28%;
+  --success-foreground: 0 0% 100%;
+  --warning: 38 92% 30%;
+  --warning-foreground: 0 0% 100%;
   --destructive: 0 84% 42%;
   --destructive-foreground: 0 84% 98%;
   --input: 210 6% 75%;
@@ -83,6 +87,14 @@
   --accent-border: hsl(from hsl(var(--accent)) h s calc(l + var(--opaque-button-border-intensity)) / alpha);
 
   /* Fallback for older browsers */
+  --success-border: hsl(var(--success));
+  --success-border: hsl(from hsl(var(--success)) h s calc(l + var(--opaque-button-border-intensity)) / alpha);
+
+  /* Fallback for older browsers */
+  --warning-border: hsl(var(--warning));
+  --warning-border: hsl(from hsl(var(--warning)) h s calc(l + var(--opaque-button-border-intensity)) / alpha);
+
+  /* Fallback for older browsers */
   --destructive-border: hsl(var(--destructive));
   --destructive-border: hsl(from hsl(var(--destructive)) h s calc(l + var(--opaque-button-border-intensity)) / alpha);
 }
@@ -118,6 +130,10 @@
   --muted-foreground: 210 8% 65%;
   --accent: 210 10% 15%;
   --accent-foreground: 210 10% 92%;
+  --success: 142 70% 50%;
+  --success-foreground: 142 50% 10%;
+  --warning: 38 92% 60%;
+  --warning-foreground: 38 40% 15%;
   --destructive: 0 84% 42%;
   --destructive-foreground: 0 84% 98%;
   --input: 210 6% 28%;
@@ -159,6 +175,14 @@
   /* Fallback for older browsers */
   --accent-border: hsl(var(--accent));
   --accent-border: hsl(from hsl(var(--accent)) h s calc(l + var(--opaque-button-border-intensity)) / alpha);
+
+  /* Fallback for older browsers */
+  --success-border: hsl(var(--success));
+  --success-border: hsl(from hsl(var(--success)) h s calc(l + var(--opaque-button-border-intensity)) / alpha);
+
+  /* Fallback for older browsers */
+  --warning-border: hsl(var(--warning));
+  --warning-border: hsl(from hsl(var(--warning)) h s calc(l + var(--opaque-button-border-intensity)) / alpha);
 
   /* Fallback for older browsers */
   --destructive-border: hsl(var(--destructive));
