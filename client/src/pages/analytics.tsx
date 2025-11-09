@@ -2,7 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { TrendingUp, TrendingDown, Activity, DollarSign } from "lucide-react";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 
@@ -23,6 +23,8 @@ interface TokenValuationData {
 }
 
 export default function Analytics() {
+  const [selectedToken, setSelectedToken] = useState<string>("");
+
   // Fetch all pools to get available tokens
   const { data: pools, isLoading: isLoadingPools, isError: isErrorPools } = useQuery<Array<{ tokenSymbol: string }>>({
     queryKey: ["/api/pools"],
@@ -33,13 +35,12 @@ export default function Analytics() {
     ? Array.from(new Set(pools.map((p) => p.tokenSymbol)))
     : [];
 
-  // Auto-select first available token
-  const [selectedToken, setSelectedToken] = useState<string>("");
-  
-  // Update selected token when pools load
-  if (!selectedToken && availableTokens.length > 0) {
-    setSelectedToken(availableTokens[0]);
-  }
+  // Auto-select first available token when pools load (in useEffect to avoid setState in render)
+  useEffect(() => {
+    if (!selectedToken && availableTokens.length > 0) {
+      setSelectedToken(availableTokens[0]);
+    }
+  }, [selectedToken, availableTokens]);
 
   // Fetch token valuation data
   const { data: valuationData, isLoading: isLoadingValuation, isError: isErrorValuation } = useQuery<TokenValuationData>({
