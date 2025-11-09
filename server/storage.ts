@@ -6,6 +6,8 @@ export interface IStorage {
   // Pool operations
   getAllPools(): Promise<Pool[]>;
   getPool(id: string): Promise<Pool | undefined>;
+  getPoolByContractAddress(contractAddress: string): Promise<Pool | undefined>;
+  getPoolByTransactionHash(transactionHash: string): Promise<Pool | undefined>;
   createPool(pool: InsertPool): Promise<Pool>;
   updatePool(id: string, pool: Partial<InsertPool>): Promise<Pool | undefined>;
   deletePool(id: string): Promise<void>;
@@ -13,6 +15,7 @@ export interface IStorage {
   // Transaction operations
   getAllTransactions(): Promise<Transaction[]>;
   getTransaction(id: string): Promise<Transaction | undefined>;
+  getTransactionsByPoolId(poolId: string): Promise<Transaction[]>;
   createTransaction(transaction: InsertTransaction): Promise<Transaction>;
   deleteTransaction(id: string): Promise<void>;
 }
@@ -24,6 +27,16 @@ export class DatabaseStorage implements IStorage {
 
   async getPool(id: string): Promise<Pool | undefined> {
     const result = await db.select().from(pools).where(eq(pools.id, id));
+    return result[0];
+  }
+
+  async getPoolByContractAddress(contractAddress: string): Promise<Pool | undefined> {
+    const result = await db.select().from(pools).where(eq(pools.contractAddress, contractAddress));
+    return result[0];
+  }
+
+  async getPoolByTransactionHash(transactionHash: string): Promise<Pool | undefined> {
+    const result = await db.select().from(pools).where(eq(pools.transactionHash, transactionHash));
     return result[0];
   }
 
@@ -48,6 +61,10 @@ export class DatabaseStorage implements IStorage {
   async getTransaction(id: string): Promise<Transaction | undefined> {
     const result = await db.select().from(transactions).where(eq(transactions.id, id));
     return result[0];
+  }
+
+  async getTransactionsByPoolId(poolId: string): Promise<Transaction[]> {
+    return await db.select().from(transactions).where(eq(transactions.poolId, poolId));
   }
 
   async createTransaction(insertTransaction: InsertTransaction): Promise<Transaction> {
