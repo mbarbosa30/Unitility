@@ -71,6 +71,11 @@ contract PaymasterPool {
 
     function claimFees(uint256 amount) external {
         require(msg.sender == sponsor, "Only sponsor");
+        require(amount <= unclaimedFees, "Exceeds unclaimed fees");
+        
+        // Decrement unclaimed fees before transfer (checks-effects-interactions)
+        unclaimedFees -= amount;
+        
         IERC20(tokenAddress).transfer(sponsor, amount);
         emit FeesClaimed(sponsor, amount);
     }
@@ -98,19 +103,82 @@ contract PaymasterPool {
     ) external returns (bytes memory context, uint256 validationData) {
         require(msg.sender == entryPoint, "Only EntryPoint");
         
-        // Decode the calldata to extract token transfer amount
-        // Expected format: transfer(address to, uint256 amount)
+        // Decode the calldata - expecting account.execute(token, 0, transfer_data)
+        // SimpleAccount execute signature: execute(address,uint256,bytes)
         bytes calldata callData = userOp.callData;
-        require(callData.length >= 68, "Invalid callData");
+        require(callData.length >= 4, "Invalid callData");
         
-        // Extract function selector and amount from callData
+        // Check if this is an execute call (common pattern for ERC-4337 accounts)
+        bytes4 executeSelector = bytes4(keccak256("execute(address,uint256,bytes)"));
         bytes4 selector = bytes4(callData[0:4]);
-        require(selector == IERC20.transfer.selector, "Only token transfers");
+        require(selector == executeSelector, "Only execute calls");
         
-        // Extract token amount (uint256 at bytes 36-68)
+        // Decode execute parameters: (address target, uint256 value, bytes data)
+        require(callData.length >= 100, "CallData too short"); // 4 (selector) + 32 (target) + 32 (value) + 32 (data offset)
+        
+        address target;
+        uint256 value;
+        bytes memory innerCallData;
+        
+        assembly {
+            // Base pointer is after selector
+            let basePtr := add(callData.offset, 4)
+            
+            // Load target address (offset 0 from basePtr)
+            target := calldataload(basePtr)
+            // Load value (offset 32 from basePtr)
+            value := calldataload(add(basePtr, 32))
+            // Load data offset pointer (offset 64 from basePtr)
+            let dataOffset := calldataload(add(basePtr, 64))
+            
+            // Validate dataOffset to prevent wraparound attacks
+            // Must be >= 96 (3 params * 32) and within callData bounds
+            if or(lt(dataOffset, 96), gt(dataOffset, sub(callData.length, 96))) {
+                revert(0, 0)
+            }
+            // Require 32-byte alignment
+            if mod(dataOffset, 32) {
+                revert(0, 0)
+            }
+            
+            // Data pointer is basePtr + dataOffset
+            let dataPtr := add(basePtr, dataOffset)
+            // Load actual data length from dataPtr
+            let dataLength := calldataload(dataPtr)
+            
+            // Bounds check: ensure we're not reading beyond callData
+            let dataEnd := add(add(dataPtr, 32), dataLength)
+            if gt(dataEnd, add(callData.offset, callData.length)) {
+                revert(0, 0)
+            }
+            
+            // Allocate memory for innerCallData
+            innerCallData := mload(0x40)
+            mstore(innerCallData, dataLength)
+            // Copy actual bytes from dataPtr + 32
+            calldatacopy(add(innerCallData, 0x20), add(dataPtr, 0x20), dataLength)
+            
+            // Update free memory pointer with 32-byte alignment
+            let nextPtr := and(add(add(innerCallData, 0x20), add(dataLength, 31)), not(31))
+            mstore(0x40, nextPtr)
+        }
+        
+        // Verify target is our token and value is 0
+        require(target == tokenAddress, "Target must be pool token");
+        require(value == 0, "Value must be 0");
+        
+        // Decode inner call data - should be transfer(address, uint256)
+        require(innerCallData.length >= 68, "Invalid token call");
+        bytes4 transferSelector = bytes4(innerCallData[0]) |
+            (bytes4(innerCallData[1]) >> 8) |
+            (bytes4(innerCallData[2]) >> 16) |
+            (bytes4(innerCallData[3]) >> 24);
+        require(transferSelector == IERC20.transfer.selector, "Must be transfer");
+        
+        // Extract token amount from transfer call
         uint256 tokenAmount;
         assembly {
-            tokenAmount := calldataload(add(callData.offset, 36))
+            tokenAmount := mload(add(innerCallData, 68)) // 32 bytes for length + 4 (selector) + 32 (address)
         }
         
         // Verify minimum transfer amount
