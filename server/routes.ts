@@ -26,8 +26,32 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Create pool
   app.post("/api/pools", async (req, res) => {
-    const pool = await storage.createPool(req.body);
-    res.status(201).json(pool);
+    try {
+      // Validate required fields
+      const { tokenAddress, feePercentage, minTokensPerTransfer, ethDeposited } = req.body;
+      
+      if (!tokenAddress) {
+        return res.status(400).json({ error: "Token address is required" });
+      }
+      
+      if (!feePercentage || parseFloat(feePercentage) < 0) {
+        return res.status(400).json({ error: "Valid fee percentage is required" });
+      }
+      
+      if (!minTokensPerTransfer || parseFloat(minTokensPerTransfer) <= 0) {
+        return res.status(400).json({ error: "Minimum tokens per transfer must be greater than 0" });
+      }
+      
+      if (!ethDeposited || parseFloat(ethDeposited) <= 0) {
+        return res.status(400).json({ error: "ETH deposit must be greater than 0" });
+      }
+      
+      const pool = await storage.createPool(req.body);
+      res.status(201).json(pool);
+    } catch (error: any) {
+      console.error("[API] Error creating pool:", error);
+      res.status(500).json({ error: error.message || "Failed to create pool" });
+    }
   });
 
   // Update pool (supports atomic increments)

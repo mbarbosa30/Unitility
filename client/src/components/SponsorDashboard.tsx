@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
-import { useAccount, useWriteContract, useWaitForTransactionReceipt } from "wagmi";
-import { parseEther } from "viem";
+import { useAccount, useWriteContract, useWaitForTransactionReceipt, usePublicClient } from "wagmi";
+import { parseEther, getAddress, isAddress } from "viem";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Table,
@@ -38,15 +38,20 @@ export default function SponsorDashboard() {
   const [withdrawOpen, setWithdrawOpen] = useState(false);
   const [claimOpen, setClaimOpen] = useState(false);
   const [selectedPool, setSelectedPool] = useState<Pool | null>(null);
+  const [tokenAddress, setTokenAddress] = useState("");
   const [tokenSymbol, setTokenSymbol] = useState("");
   const [tokenName, setTokenName] = useState("");
+  const [tokenDecimals, setTokenDecimals] = useState<number>(18);
+  const [isFetchingMetadata, setIsFetchingMetadata] = useState(false);
   const [ethAmount, setEthAmount] = useState("");
   const [feePercentage, setFeePercentage] = useState("");
+  const [minTokens, setMinTokens] = useState("");
   const [newFeePercentage, setNewFeePercentage] = useState("");
   const [withdrawAmount, setWithdrawAmount] = useState("");
   const [claimAmount, setClaimAmount] = useState("");
   const { address } = useAccount();
   const { toast } = useToast();
+  const publicClient = usePublicClient();
 
   const { data: pools, isLoading } = useQuery<Pool[]>({
     queryKey: ["/api/pools"],
@@ -121,15 +126,86 @@ export default function SponsorDashboard() {
     },
   });
 
+  const fetchTokenMetadata = async (address: string) => {
+    if (!isAddress(address) || !publicClient) {
+      return;
+    }
+
+    setIsFetchingMetadata(true);
+    try {
+      const checksumAddress = getAddress(address);
+      
+      const erc20Abi = [
+        {
+          constant: true,
+          inputs: [],
+          name: "symbol",
+          outputs: [{ name: "", type: "string" }],
+          type: "function",
+        },
+        {
+          constant: true,
+          inputs: [],
+          name: "name",
+          outputs: [{ name: "", type: "string" }],
+          type: "function",
+        },
+        {
+          constant: true,
+          inputs: [],
+          name: "decimals",
+          outputs: [{ name: "", type: "uint8" }],
+          type: "function",
+        },
+      ] as const;
+
+      const [symbol, name, decimals] = await Promise.all([
+        publicClient.readContract({
+          address: checksumAddress as `0x${string}`,
+          abi: erc20Abi,
+          functionName: "symbol",
+        }),
+        publicClient.readContract({
+          address: checksumAddress as `0x${string}`,
+          abi: erc20Abi,
+          functionName: "name",
+        }),
+        publicClient.readContract({
+          address: checksumAddress as `0x${string}`,
+          abi: erc20Abi,
+          functionName: "decimals",
+        }),
+      ]);
+
+      setTokenSymbol(symbol as string);
+      setTokenName(name as string);
+      setTokenDecimals(Number(decimals));
+    } catch (error: any) {
+      toast({
+        title: "Invalid Token Contract",
+        description: "Could not fetch token metadata. Make sure this is a valid ERC-20 address.",
+        variant: "destructive",
+      });
+      setTokenSymbol("");
+      setTokenName("");
+      setTokenDecimals(18);
+    } finally {
+      setIsFetchingMetadata(false);
+    }
+  };
+
   const resetCreateForm = () => {
+    setTokenAddress("");
     setTokenSymbol("");
     setTokenName("");
+    setTokenDecimals(18);
     setEthAmount("");
     setFeePercentage("");
+    setMinTokens("");
   };
 
   const handleCreatePool = () => {
-    if (!tokenSymbol || !tokenName || !ethAmount || !feePercentage) {
+    if (!tokenAddress || !tokenSymbol || !tokenName || !ethAmount || !feePercentage || !minTokens) {
       toast({
         title: "Validation Error",
         description: "Please fill in all fields",
@@ -138,10 +214,22 @@ export default function SponsorDashboard() {
       return;
     }
 
+    if (!isAddress(tokenAddress)) {
+      toast({
+        title: "Invalid Address",
+        description: "Please enter a valid token contract address",
+        variant: "destructive",
+      });
+      return;
+    }
+
     createPoolMutation.mutate({
+      tokenAddress: getAddress(tokenAddress),
       tokenSymbol: tokenSymbol.toUpperCase(),
       tokenName,
+      decimals: tokenDecimals,
       feePercentage,
+      minTokensPerTransfer: minTokens,
       ethDeposited: ethAmount,
       feesEarned: "0",
       volume: "0",
@@ -420,24 +508,27 @@ export default function SponsorDashboard() {
                   </DialogHeader>
                   <div className="space-y-4">
                     <div className="space-y-2">
-                      <Label htmlFor="token-symbol">Token Symbol</Label>
+                      <Label htmlFor="token-address">Token Contract Address</Label>
                       <Input
-                        id="token-symbol"
-                        placeholder="e.g., DOGGO"
-                        value={tokenSymbol}
-                        onChange={(e) => setTokenSymbol(e.target.value)}
-                        data-testid="input-token-symbol"
+                        id="token-address"
+                        placeholder="0x..."
+                        value={tokenAddress}
+                        onChange={(e) => {
+                          setTokenAddress(e.target.value);
+                          if (isAddress(e.target.value)) {
+                            fetchTokenMetadata(e.target.value);
+                          }
+                        }}
+                        data-testid="input-token-address"
                       />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="token-name">Token Name</Label>
-                      <Input
-                        id="token-name"
-                        placeholder="e.g., Doggo Token"
-                        value={tokenName}
-                        onChange={(e) => setTokenName(e.target.value)}
-                        data-testid="input-token-name"
-                      />
+                      {isFetchingMetadata && (
+                        <p className="text-xs text-muted-foreground">Fetching token info...</p>
+                      )}
+                      {tokenSymbol && (
+                        <p className="text-xs text-muted-foreground">
+                          Found: {tokenName} ({tokenSymbol}) · {tokenDecimals} decimals
+                        </p>
+                      )}
                     </div>
                     <div className="space-y-2">
                       <Label htmlFor="eth-amount">ETH Amount</Label>
@@ -461,6 +552,21 @@ export default function SponsorDashboard() {
                         onChange={(e) => setFeePercentage(e.target.value)}
                         data-testid="input-fee"
                       />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="min-tokens">Minimum Tokens Per Transfer</Label>
+                      <Input
+                        id="min-tokens"
+                        type="number"
+                        placeholder="1"
+                        step="0.000001"
+                        value={minTokens}
+                        onChange={(e) => setMinTokens(e.target.value)}
+                        data-testid="input-min-tokens"
+                      />
+                      <p className="text-xs text-muted-foreground">
+                        Smallest amount users can send in a single transaction
+                      </p>
                     </div>
                     <Button
                       onClick={handleCreatePool}
