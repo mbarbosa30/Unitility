@@ -1,7 +1,7 @@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { TrendingDown, Zap } from "lucide-react";
+import { TrendingDown, Zap, Search } from "lucide-react";
 import TokenIcon from "./TokenIcon";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import type { Pool } from "@shared/schema";
@@ -118,10 +118,17 @@ export default function RebalancerPanel() {
           ))}
           
           {opportunities.length === 0 && (
-            <div className="rounded-lg border border-dashed p-8 text-center text-muted-foreground">
-              No arbitrage opportunities available at the moment.
-              <br />
-              Check back when pool prices deviate from market rates.
+            <div className="flex flex-col items-center justify-center py-12 text-center">
+              <div className="rounded-full bg-muted p-3 mb-4">
+                <Search className="h-6 w-6 text-muted-foreground" />
+              </div>
+              <h3 className="text-lg font-semibold mb-2">No Opportunities Found</h3>
+              <p className="text-sm text-muted-foreground mb-4 max-w-sm">
+                No arbitrage opportunities available right now. Opportunities appear when pool discounts deviate from market rates.
+              </p>
+              <p className="text-xs text-muted-foreground">
+                Check back soon or monitor pool prices for profitable rebalancing opportunities.
+              </p>
             </div>
           )}
         </div>

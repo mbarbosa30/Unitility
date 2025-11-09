@@ -13,7 +13,7 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import TokenIcon from "./TokenIcon";
 import DiscountBadge from "./DiscountBadge";
-import { ArrowUpDown, Send } from "lucide-react";
+import { ArrowUpDown, Send, Inbox } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import type { Pool } from "@shared/schema";
 
@@ -61,6 +61,8 @@ export default function PoolsTable() {
     if (num >= 1000) return `${(num / 1000).toFixed(1)}K`;
     return num.toFixed(0);
   };
+
+  const hasNoPools = !isLoading && sortedPools.length === 0;
 
   if (isLoading) {
     return (
@@ -118,6 +120,31 @@ export default function PoolsTable() {
                 ))}
               </TableBody>
             </Table>
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  if (hasNoPools) {
+    return (
+      <Card data-testid="card-pools">
+        <CardHeader>
+          <CardTitle>Pool Discovery</CardTitle>
+          <CardDescription>Find sponsored pools for gasless transfers</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="flex flex-col items-center justify-center py-12 text-center">
+            <div className="rounded-full bg-muted p-3 mb-4">
+              <Inbox className="h-6 w-6 text-muted-foreground" />
+            </div>
+            <h3 className="text-lg font-semibold mb-2">No Pools Available</h3>
+            <p className="text-sm text-muted-foreground mb-6 max-w-sm">
+              There are no sponsorship pools yet. Be the first to create a pool and enable gasless transfers for your favorite token.
+            </p>
+            <Button variant="default" data-testid="button-empty-create-pool">
+              Create First Pool
+            </Button>
           </div>
         </CardContent>
       </Card>

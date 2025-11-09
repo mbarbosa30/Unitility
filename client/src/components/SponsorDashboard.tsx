@@ -21,7 +21,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Plus, Settings, TrendingUp } from "lucide-react";
+import { Plus, Settings, TrendingUp, Wallet } from "lucide-react";
 import TokenIcon from "./TokenIcon";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import type { Pool } from "@shared/schema";
@@ -385,8 +385,20 @@ export default function SponsorDashboard() {
                 ))}
                 {myPools.length === 0 && (
                   <TableRow>
-                    <TableCell colSpan={5} className="text-center text-muted-foreground py-8">
-                      No active sponsorships. Create your first pool to start earning.
+                    <TableCell colSpan={5} className="py-12">
+                      <div className="flex flex-col items-center justify-center text-center">
+                        <div className="rounded-full bg-muted p-3 mb-4">
+                          <Wallet className="h-6 w-6 text-muted-foreground" />
+                        </div>
+                        <h3 className="text-lg font-semibold mb-2">No Active Sponsorships</h3>
+                        <p className="text-sm text-muted-foreground mb-6 max-w-sm">
+                          Create your first pool to start earning fees in tokens you believe in. Deposit ETH and earn yield as users make gasless transfers.
+                        </p>
+                        <Button onClick={() => setCreateOpen(true)} data-testid="button-empty-sponsor-create">
+                          <Plus className="h-4 w-4 mr-2" />
+                          Create Your First Pool
+                        </Button>
+                      </div>
                     </TableCell>
                   </TableRow>
                 )}
