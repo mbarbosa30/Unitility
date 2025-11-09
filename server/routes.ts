@@ -106,7 +106,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
     // Recompute metrics from raw B/T/S for resilience (as per architect)
     const recomputedImpliedPrice = calculateImpliedPrice(
       pool.cumulativeGasBurned,
-      pool.feesEarned
+      pool.feesEarned,
+      pool.decimals
     );
     
     const recomputedIntendedFdv = recomputedImpliedPrice && pool.totalSupply
@@ -192,7 +193,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
     const dataPoints = pools.map((pool) => {
       const impliedPrice = calculateImpliedPrice(
         pool.cumulativeGasBurned,
-        pool.feesEarned
+        pool.feesEarned,
+        pool.decimals
       );
       const intendedFdv = impliedPrice && pool.totalSupply
         ? calculateIntendedFdv(impliedPrice, pool.totalSupply)

@@ -4,7 +4,7 @@
  * and syncs them to the database in real-time
  */
 
-import { createPublicClient, http, parseAbiItem, formatEther, parseEther, type Log } from 'viem';
+import { createPublicClient, http, parseAbiItem, formatEther, parseEther, parseUnits, formatUnits, type Log } from 'viem';
 import { base } from 'viem/chains';
 import { storage } from './storage';
 import PaymasterFactoryABI from '../client/src/contracts/PaymasterFactory.json';
@@ -178,10 +178,39 @@ export class BlockchainIndexer {
         // Add to watched pools
         this.poolAddresses.add(poolAddress);
 
-        // Fetch token metadata (simplified - would need ERC-20 contract call)
-        // For now, use placeholder values
-        const tokenSymbol = 'TOKEN';
-        const tokenName = 'Unknown Token';
+        // Fetch token metadata from ERC-20 contract
+        let tokenSymbol = 'TOKEN';
+        let tokenName = 'Unknown Token';
+        let decimals = 18; // Default to 18 if fetch fails
+        
+        try {
+          // Fetch symbol, name, and decimals from ERC-20 contract
+          const [fetchedSymbol, fetchedName, fetchedDecimals] = await Promise.all([
+            this.publicClient.readContract({
+              address: tokenAddress,
+              abi: [{ name: 'symbol', type: 'function', stateMutability: 'view', inputs: [], outputs: [{ type: 'string' }] }],
+              functionName: 'symbol',
+            }) as Promise<string>,
+            this.publicClient.readContract({
+              address: tokenAddress,
+              abi: [{ name: 'name', type: 'function', stateMutability: 'view', inputs: [], outputs: [{ type: 'string' }] }],
+              functionName: 'name',
+            }) as Promise<string>,
+            this.publicClient.readContract({
+              address: tokenAddress,
+              abi: [{ name: 'decimals', type: 'function', stateMutability: 'view', inputs: [], outputs: [{ type: 'uint8' }] }],
+              functionName: 'decimals',
+            }) as Promise<number>,
+          ]);
+          
+          tokenSymbol = fetchedSymbol;
+          tokenName = fetchedName;
+          decimals = fetchedDecimals;
+          
+          console.log('[Indexer] Fetched token metadata:', { tokenSymbol, tokenName, decimals });
+        } catch (error) {
+          console.error('[Indexer] Failed to fetch token metadata, using defaults:', error);
+        }
 
         // Create pool in database
         await storage.createPool({
@@ -189,6 +218,7 @@ export class BlockchainIndexer {
           tokenAddress,
           tokenSymbol,
           tokenName,
+          decimals,
           sponsor,
           feePercentage: (Number(feePct) / 100).toString(),
           ethDeposited: '0',
@@ -520,14 +550,14 @@ export class BlockchainIndexer {
               }
               
               // Recalculate implied price and intended FDV
-              const feesEarnedWei = parseEther(pool.feesEarned || '0');
+              const feesEarnedUnits = parseUnits(pool.feesEarned || '0', pool.decimals);
               let impliedPrice: string | undefined;
               let intendedFdv: string | undefined;
               
-              if (feesEarnedWei > BigInt(0)) {
+              if (feesEarnedUnits > BigInt(0)) {
                 // P = B / T (ETH burned per token earned)
-                // Using 18 decimal precision for price calculation
-                const priceWei = (totalGasBurnedWei * parseEther('1')) / feesEarnedWei;
+                // Gas is in ETH (18 decimals), fees in token decimals
+                const priceWei = (totalGasBurnedWei * parseEther('1')) / feesEarnedUnits;
                 impliedPrice = formatEther(priceWei);
                 
                 // V = P × S (Intended FDV = price × total supply)
@@ -574,8 +604,8 @@ export class BlockchainIndexer {
           fromAddress: sender,
           toAddress: sender, // For now, we don't extract the recipient from calldata
           tokenSymbol: pool.tokenSymbol,
-          amount: formatEther(tokenFee), // Token amount is the fee paid
-          fee: formatEther(tokenFee),
+          amount: formatUnits(tokenFee, pool.decimals), // Token amount is the fee paid
+          fee: formatUnits(tokenFee, pool.decimals),
           poolId: pool.id,
           gasCost: formatEther(actualGasCost),
           transactionHash: log.transactionHash,
@@ -587,17 +617,17 @@ export class BlockchainIndexer {
         const currentGasBurnedWei = parseEther(pool.cumulativeGasBurned || '0');
         const totalGasBurnedWei = currentGasBurnedWei + actualGasCost;
 
-        // Update fees earned using bigint
-        const currentFeesWei = parseEther(pool.feesEarned || '0');
-        const totalFeesWei = currentFeesWei + tokenFee;
+        // Update fees earned using bigint (token decimals)
+        const currentFeesUnits = parseUnits(pool.feesEarned || '0', pool.decimals);
+        const totalFeesUnits = currentFeesUnits + tokenFee;
 
         // Calculate implied price: P = B / T (ETH burned per token earned)
-        // Using 18 decimal precision for price calculation
+        // Gas is in ETH (18 decimals), fees in token decimals
         let impliedPrice: string | undefined;
         let intendedFdv: string | undefined;
         
-        if (totalFeesWei > BigInt(0)) {
-          const priceWei = (totalGasBurnedWei * parseEther('1')) / totalFeesWei;
+        if (totalFeesUnits > BigInt(0)) {
+          const priceWei = (totalGasBurnedWei * parseEther('1')) / totalFeesUnits;
           impliedPrice = formatEther(priceWei);
           
           // Calculate intended FDV: V = P × S
@@ -610,7 +640,7 @@ export class BlockchainIndexer {
 
         await storage.updatePool(pool.id, {
           cumulativeGasBurned: formatEther(totalGasBurnedWei),
-          feesEarned: formatEther(totalFeesWei),
+          feesEarned: formatUnits(totalFeesUnits, pool.decimals),
           impliedPrice,
           intendedFdv,
         });

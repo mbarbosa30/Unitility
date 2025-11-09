@@ -9,6 +9,7 @@ export const pools = pgTable("pools", {
   tokenAddress: text("token_address"),
   tokenSymbol: text("token_symbol").notNull(),
   tokenName: text("token_name").notNull(),
+  decimals: integer("decimals").notNull().default(18),
   feePercentage: decimal("fee_percentage", { precision: 5, scale: 2 }).notNull(),
   ethDeposited: decimal("eth_deposited", { precision: 18, scale: 6 }).notNull(),
   feesEarned: decimal("fees_earned", { precision: 18, scale: 6 }).notNull(),

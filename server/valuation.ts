@@ -8,7 +8,7 @@
  * - Arbitrage Signal = (V - spotFDV) / spotFDV × 100%
  */
 
-import { parseEther, formatEther } from 'viem';
+import { parseEther, formatEther, parseUnits, formatUnits } from 'viem';
 import type { Pool } from '@shared/schema';
 
 export interface ValuationMetrics {
@@ -48,17 +48,25 @@ export interface TokenAggregatedMetrics {
  * @param feesEarned Cumulative token fees collected
  * @returns Implied ETH per token price
  */
-export function calculateImpliedPrice(gasBurned: string, feesEarned: string): string | null {
+export function calculateImpliedPrice(
+  gasBurned: string, 
+  feesEarned: string,
+  tokenDecimals: number = 18
+): string | null {
   try {
+    // Gas is always in ETH (18 decimals)
     const gasBurnedWei = parseEther(gasBurned);
-    const feesEarnedWei = parseEther(feesEarned);
+    
+    // Fees are in token units (use token decimals)
+    const feesEarnedUnits = parseUnits(feesEarned, tokenDecimals);
 
-    if (feesEarnedWei === BigInt(0)) {
+    if (feesEarnedUnits === BigInt(0)) {
       return null; // Cannot calculate without fees
     }
 
-    // P = B / T (using 18 decimal precision)
-    const priceWei = (gasBurnedWei * parseEther('1')) / feesEarnedWei;
+    // P = B / T (scale to 18 decimals for consistency)
+    // Price is in ETH per token, so we normalize to 18 decimals regardless of token decimals
+    const priceWei = (gasBurnedWei * parseEther('1')) / feesEarnedUnits;
     return formatEther(priceWei);
   } catch (error) {
     console.error('[Valuation] Error calculating implied price:', error);
@@ -155,7 +163,7 @@ export function getPoolValuationMetrics(
   const impliedPrice = recomputedImpliedPrice !== undefined
     ? (recomputedImpliedPrice || '0')
     : (pool.impliedPrice || 
-        calculateImpliedPrice(pool.cumulativeGasBurned, pool.feesEarned) || 
+        calculateImpliedPrice(pool.cumulativeGasBurned, pool.feesEarned, pool.decimals) || 
         '0');
 
   const intendedFdv = recomputedIntendedFdv !== undefined
@@ -224,24 +232,25 @@ export function aggregateTokenMetrics(
   if (pools.length === 0) return null;
 
   const firstPool = pools[0];
+  const tokenDecimals = firstPool.decimals; // All pools for same token should have same decimals
   
   // Aggregate across all pools for this token
   let totalGasBurnedWei = BigInt(0);
-  let totalFeesEarnedWei = BigInt(0);
-  let totalVolumeWei = BigInt(0);
+  let totalFeesEarnedUnits = BigInt(0);
+  let totalVolumeUnits = BigInt(0);
 
   pools.forEach((pool) => {
     totalGasBurnedWei += parseEther(pool.cumulativeGasBurned || '0');
-    totalFeesEarnedWei += parseEther(pool.feesEarned || '0');
-    totalVolumeWei += parseEther(pool.volume || '0');
+    totalFeesEarnedUnits += parseUnits(pool.feesEarned || '0', pool.decimals);
+    totalVolumeUnits += parseUnits(pool.volume || '0', pool.decimals);
   });
 
   const aggregateGasBurned = formatEther(totalGasBurnedWei);
-  const aggregateFeesEarned = formatEther(totalFeesEarnedWei);
-  const aggregateVolume = formatEther(totalVolumeWei);
+  const aggregateFeesEarned = formatUnits(totalFeesEarnedUnits, tokenDecimals);
+  const aggregateVolume = formatUnits(totalVolumeUnits, tokenDecimals);
 
   // Calculate aggregate implied price
-  const impliedPrice = calculateImpliedPrice(aggregateGasBurned, aggregateFeesEarned) || '0';
+  const impliedPrice = calculateImpliedPrice(aggregateGasBurned, aggregateFeesEarned, tokenDecimals) || '0';
 
   // Calculate intended FDV if we have total supply
   const totalSupply = firstPool.totalSupply;

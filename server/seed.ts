@@ -17,6 +17,7 @@ async function seed() {
       tokenSymbol: "DOGGO",
       tokenName: "Doggo Token",
       tokenAddress: "0x4F604735c1cF31399C6E711D5962b2B3E0225AD3",
+      decimals: 18, // Standard ERC-20 decimals
       contractAddress: "0x742d35Cc6634C0532925a3b844Bc454e4438f44e",
       sponsor: "0x1234567890123456789012345678901234567890",
       feePercentage: "0.4",
@@ -33,7 +34,8 @@ async function seed() {
     {
       tokenSymbol: "USDC",
       tokenName: "USD Coin",
-      tokenAddress: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+      tokenAddress: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913", // Base mainnet USDC
+      decimals: 6, // USDC has 6 decimals
       contractAddress: "0x851356ae760d987E095750cCeb3bC6014560891C",
       sponsor: "0x2345678901234567890123456789012345678901",
       feePercentage: "0.1",
@@ -51,6 +53,7 @@ async function seed() {
       tokenSymbol: "RARE",
       tokenName: "Rare Token",
       tokenAddress: "0xFEa7a6a0B346362BF88A9e4A88416B77a57D6c2A",
+      decimals: 18, // Standard ERC-20 decimals
       contractAddress: "0xd45F27E7d4F98E8c02f48F58C8A65F3E8Fc28Ae1",
       sponsor: "0x3456789012345678901234567890123456789012",
       feePercentage: "0.8",
