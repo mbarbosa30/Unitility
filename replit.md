@@ -123,3 +123,17 @@ Preferred communication style: Simple, everyday language.
 - TypeScript strict mode for type safety
 - Test IDs embedded in components for E2E testing support
 - Incremental TypeScript compilation with build info caching
+
+**Accessibility Features:**
+- All icon-only buttons have accessible labels (aria-label or sr-only text)
+  - Theme toggle: Dynamic aria-label based on current state
+  - Carousel navigation: sr-only text for Previous/Next slides
+  - Sidebar trigger: sr-only text for Toggle Sidebar
+- Focus-visible states on all interactive elements (buttons, inputs, selects)
+  - Buttons: focus-visible:ring-1 with theme-aware ring color
+  - Inputs/selects: focus-visible:ring-2 with ring offset
+- Keyboard navigation fully supported
+  - ESC closes all Dialog/Modal components (Radix UI primitive)
+  - Tab/Shift+Tab navigate through interactive elements
+  - Arrow keys work in Select dropdowns (Radix UI primitive)
+  - Focus trap within modals with proper focus return

@@ -49,6 +49,7 @@ export default function Header() {
             size="icon"
             variant="ghost"
             onClick={toggleDarkMode}
+            aria-label={darkMode ? "Switch to light mode" : "Switch to dark mode"}
             data-testid="button-theme-toggle"
           >
             {darkMode ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
