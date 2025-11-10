@@ -163,8 +163,8 @@ export function buildUserOp(params: BuildUserOpParams): Omit<PackedUserOperation
   // Step 5: Pack gas limits (validation gas + call gas)
   const accountGasLimits = packUint128s(validationGasLimit, callGasLimit);
   
-  // Step 6: Pack gas fees (priority fee + max fee)
-  const gasFees = packUint128s(maxPriorityFeePerGas, maxFeePerGas);
+  // Step 6: Pack gas fees per ERC-4337 v0.7: maxFeePerGas (high) + maxPriorityFeePerGas (low)
+  const gasFees = packUint128s(maxFeePerGas, maxPriorityFeePerGas);
   
   // Step 7: Construct paymaster and data
   // Format per ERC-4337 v0.7:
@@ -220,10 +220,10 @@ export function getUserOpHash(
   const verificationGasLimit = BigInt('0x' + accountGasLimitsHex.slice(0, 32)); // First 16 bytes
   const callGasLimit = BigInt('0x' + accountGasLimitsHex.slice(32, 64)); // Last 16 bytes
   
-  // Unpack gasFees: bytes32 containing maxPriorityFeePerGas (16B) + maxFeePerGas (16B)
+  // Unpack gasFees: bytes32 per ERC-4337 v0.7: maxFeePerGas (16B high) + maxPriorityFeePerGas (16B low)
   const gasFeesHex = userOp.gasFees.slice(2); // Remove 0x
-  const maxPriorityFeePerGas = BigInt('0x' + gasFeesHex.slice(0, 32)); // First 16 bytes
-  const maxFeePerGas = BigInt('0x' + gasFeesHex.slice(32, 64)); // Last 16 bytes
+  const maxFeePerGas = BigInt('0x' + gasFeesHex.slice(0, 32)); // First 16 bytes (high)
+  const maxPriorityFeePerGas = BigInt('0x' + gasFeesHex.slice(32, 64)); // Last 16 bytes (low)
   
   // Step 1: Tight-pack inner fields (no ABI padding)
   // Per ERC-4337 v0.7: Only the 4 gas LIMIT fields are uint128, preVerificationGas stays uint256
