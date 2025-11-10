@@ -100,7 +100,7 @@ export async function selectBestPool(params: PoolSelectionParams): Promise<{
     tokenSymbol,
     amount,
     pools,
-    estimatedGasInETH = "0.001", // Default: ~$3-4 gas cost on Base
+    estimatedGasInETH = "0.0003", // Default: ~$0.90-1.20 gas cost on Base (actual: ~0.00014 ETH)
     tokenPriceInETH: providedPrice,
   } = params;
   

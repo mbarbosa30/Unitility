@@ -83,7 +83,7 @@ export default function SendTokenModal({ preselectedToken, triggerButton }: Send
         tokenSymbol: selectedToken,
         amount,
         pools,
-        estimatedGasInETH: "0.001", // ~$3-4 on Base
+        estimatedGasInETH: "0.0003", // ~$0.90-1.20 on Base (actual cost ~0.00014 ETH)
       });
     },
     enabled: !!pools && !!amount && parseFloat(amount) > 0,
