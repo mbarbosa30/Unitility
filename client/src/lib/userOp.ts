@@ -5,7 +5,8 @@ import {
   parseEther,
   keccak256,
   encodeAbiParameters,
-  parseAbiParameters 
+  parseAbiParameters,
+  toHex 
 } from 'viem';
 import { base } from 'viem/chains';
 
@@ -210,24 +211,29 @@ export function getUserOpHash(
   entryPoint: Address = ENTRY_POINT_ADDRESS,
   chainId: number = base.id
 ): Hex {
-  // Helper: Convert bigint to hex with exact byte length (no 0x prefix)
-  const toHex = (value: bigint, bytes: number): string => {
-    return value.toString(16).padStart(bytes * 2, '0');
-  };
-  
   // Step 1: Tight-pack inner fields (no ABI padding)
   // Per ERC-4337 v0.7 spec: concatenate fields directly as raw bytes (244 bytes total)
-  // toHex() returns plain hex WITHOUT '0x', so no .slice(2) needed for those
-  const innerPacked = '0x' + [
-    userOp.sender.slice(2),                           // address (20 bytes) - strip 0x
-    toHex(userOp.nonce, 32),                          // uint256 (32 bytes) - no 0x prefix
-    keccak256(userOp.initCode || '0x').slice(2),      // bytes32 (32 bytes) - strip 0x
-    keccak256(userOp.callData).slice(2),              // bytes32 (32 bytes) - strip 0x
-    userOp.accountGasLimits.slice(2),                 // bytes32 (32 bytes) - strip 0x
-    toHex(userOp.preVerificationGas, 32),             // uint256 (32 bytes) - no 0x prefix
-    userOp.gasFees.slice(2),                          // bytes32 (32 bytes) - strip 0x
-    keccak256(userOp.paymasterAndData || '0x').slice(2), // bytes32 (32 bytes) - strip 0x
-  ].join('') as Hex;
+  // All fields must have '0x' prefix stripped before concatenation
+  const parts = [
+    userOp.sender.slice(2),                           // 40 chars (20 bytes)
+    toHex(userOp.nonce, { size: 32 }).slice(2),       // 64 chars (32 bytes)
+    keccak256(userOp.initCode || '0x').slice(2),      // 64 chars (32 bytes)
+    keccak256(userOp.callData).slice(2),              // 64 chars (32 bytes)
+    userOp.accountGasLimits.slice(2),                 // 64 chars (32 bytes) - already packed!
+    toHex(userOp.preVerificationGas, { size: 32 }).slice(2), // 64 chars (32 bytes)
+    userOp.gasFees.slice(2),                          // 64 chars (32 bytes) - already packed!
+    keccak256(userOp.paymasterAndData || '0x').slice(2), // 64 chars (32 bytes)
+  ];
+  
+  // Join clean hex parts → should be exactly 488 chars
+  const innerPacked = `0x${parts.join('')}` as Hex;
+  
+  console.log('[getUserOpHash] Pack verification:', {
+    packLength: innerPacked.length,
+    expectedLength: 490, // 0x + 488 hex chars
+    partsCount: parts.length,
+    isValid: innerPacked.length === 490,
+  });
   
   const innerHash = keccak256(innerPacked);
   
