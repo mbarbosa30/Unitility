@@ -9,8 +9,9 @@ export interface TokenAnalytics {
   totalTransfers: number;
   avgTransferAmount: string;
   avgFeePercentage: string; // Weighted average fee across all pools
-  impliedPriceInETH: string; // ETH burned / tokens accrued
-  intendedFDV: string | null; // implied price × total supply (if available)
+  impliedPrice: string | null; // ETH burned / tokens accrued
+  intendedFdv: string | null; // implied price × total supply (if available)
+  totalSupply: string | null; // Total supply from pool metadata
 }
 
 export interface IStorage {
@@ -152,15 +153,15 @@ export class DatabaseStorage implements IStorage {
         // Calculate implied price: ETH burned / tokens accrued
         const ethBurned = parseFloat(row.totalEthBurned);
         const tokensAccrued = parseFloat(row.totalTokensAccrued);
-        const impliedPriceInETH = tokensAccrued > 0
+        const impliedPrice = tokensAccrued > 0
           ? (ethBurned / tokensAccrued).toFixed(12)
-          : "0";
+          : null;
 
         // Calculate intended FDV if total supply is available
-        let intendedFDV: string | null = null;
-        if (totalSupply && parseFloat(impliedPriceInETH) > 0) {
-          const fdv = parseFloat(impliedPriceInETH) * parseFloat(totalSupply);
-          intendedFDV = fdv.toFixed(6);
+        let intendedFdv: string | null = null;
+        if (totalSupply && impliedPrice && parseFloat(impliedPrice) > 0) {
+          const fdv = parseFloat(impliedPrice) * parseFloat(totalSupply);
+          intendedFdv = fdv.toFixed(6);
         }
 
         return {
@@ -170,8 +171,9 @@ export class DatabaseStorage implements IStorage {
           totalTransfers: row.totalTransfers,
           avgTransferAmount: row.avgTransferAmount,
           avgFeePercentage,
-          impliedPriceInETH,
-          intendedFDV,
+          impliedPrice,
+          intendedFdv,
+          totalSupply,
         };
       })
     );
