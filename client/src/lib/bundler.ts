@@ -103,6 +103,12 @@ export class BundlerClient {
     
     const responseText = await response.text();
     
+    console.log('[Bundler] Raw response:', {
+      status: response.status,
+      statusText: response.statusText,
+      text: responseText.substring(0, 500),
+    });
+    
     if (!response.ok) {
       throw new Error(`Bundler HTTP error ${response.status}: ${responseText}`);
     }
@@ -111,7 +117,8 @@ export class BundlerClient {
     try {
       data = JSON.parse(responseText);
     } catch (err) {
-      throw new Error(`Bundler returned invalid JSON: ${responseText.substring(0, 200)}`);
+      console.error('[Bundler] Failed to parse JSON:', responseText);
+      throw new Error(`Bundler returned invalid JSON: ${responseText.substring(0, 500)}`);
     }
     
     if (data.error) {
