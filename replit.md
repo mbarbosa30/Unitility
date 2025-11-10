@@ -8,18 +8,18 @@ The application follows a "Venmo-like" user experience philosophy: send any toke
 
 ## Recent Changes
 
-### November 10, 2025 - EIP-7562 Compliant PaymasterPool with Selector Validation (PRODUCTION READY)
-- **Final deployed contract**: 0x978c3afe26dc8c6a9c1c3e4f66f4d0d8d447dfe4
+### November 10, 2025 - Fixed Selector Validation + 5x Funding (TESTING)
+- **Final deployed contract**: 0xbd55102033139bedc8d3406157e15017795d235d
   - Token: TALENT (0x9a33406165f562e16c3abd82fd1185482e01b49a)
   - Fee: 3% (300 basis points)
   - Minimum transfer: 5 TALENT tokens
-  - Deployment TX: 0x4af2e1a60b9566bb1a9b55efa7ba66b4d5e7f8960f1a78b564172b37b31f1877
-  - Block: 38003068
-  - Gas used: 1,463,746 (bytecode: 12,412 chars runtime)
+  - Deployment TX: 0xd2e123b6a5be6d728828e737a7453629f796c6783500e574aa63fb1c1014dd1f
+  - Block: 38003648
+  - Gas used: 1,471,513 (bytecode: 12,484 chars runtime)
   - Deployed via raw CREATE transaction (bypassed factory routing)
   - Compiled with solc 0.8.20 + viaIR:true for stack depth optimization
-  - **Runtime bytecode hash**: 0xe391dd3e58820d1b32a5ff830db7733149f79a8aeec0e6a38e01a14fb996de44
-- **Funded with 0.001 ETH**: Deposited to EntryPoint via depositTo() for gasless transfers
+  - **Runtime bytecode hash**: 0x50d15eea687206d2504258d7eff3e6e48ae40a1dfac7f070e2962d4632c324b0
+- **Funded with 0.005 ETH**: 5x safety margin per audit recommendations
 - **EIP-7562 Compliance** (CRITICAL FIX):
   - **Removed external storage access**: Deleted balanceOf and allowance checks from validatePaymasterUserOp
   - **Why**: Unstaked paymasters CANNOT access external contract storage during validation per EIP-7562 rule [STO-021]
