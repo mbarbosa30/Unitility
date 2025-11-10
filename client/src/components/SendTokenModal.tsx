@@ -193,10 +193,24 @@ export default function SendTokenModal({ preselectedToken, triggerButton }: Send
   });
 
   const handleSend = () => {
+    console.log("Send clicked - Debug info:", {
+      recipient,
+      amount,
+      selectedToken,
+      currentPool: currentPool ? "Found" : "Missing",
+      poolsLoaded: pools ? pools.length : 0,
+      isConnected,
+    });
+
     if (!recipient || !amount || !currentPool) {
+      const missing = [];
+      if (!recipient) missing.push("recipient address");
+      if (!amount) missing.push("amount");
+      if (!currentPool) missing.push("active pool for this token");
+      
       toast({
-        title: "Validation Error",
-        description: "Please fill in all fields and select a token with an active pool",
+        title: "Missing Information",
+        description: `Please provide: ${missing.join(", ")}`,
         variant: "destructive",
       });
       return;
