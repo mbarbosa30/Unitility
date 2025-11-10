@@ -17,7 +17,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Send, Info, Zap } from "lucide-react";
+import { Send, Info, Zap, CheckCircle2, Loader2, Wallet } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import TokenIcon from "./TokenIcon";
 import { useToast } from "@/hooks/use-toast";
@@ -30,6 +30,7 @@ import { buildUserOp, getUserOpHash, signUserOp, ENTRY_POINT_ADDRESS } from "@/l
 import { bundlerClient } from "@/lib/bundler";
 import { setupSimpleAccount } from "@/lib/simpleAccount";
 import { base } from "viem/chains";
+import { useSmartWalletStatus } from "@/hooks/useSmartWalletStatus";
 
 export default function SendTokenModal() {
   const [open, setOpen] = useState(false);
@@ -42,6 +43,9 @@ export default function SendTokenModal() {
   const { address, isConnected } = useAccount();
   const { signMessageAsync } = useSignMessage();
   const publicClient = usePublicClient();
+  
+  // Smart wallet status detection
+  const { walletType, smartAccountAddress, smartAccountStatus, isLoading: isLoadingWalletStatus } = useSmartWalletStatus();
 
   const { data: pools } = useQuery<Pool[]>({
     queryKey: ["/api/pools"],
@@ -217,6 +221,63 @@ export default function SendTokenModal() {
         </DialogHeader>
         
         <div className="space-y-4">
+          {/* Smart Wallet Status Banner */}
+          {isConnected && walletType === 'eoa' && (
+            <div className="rounded-lg border bg-muted/30 p-3" data-testid="banner-smart-wallet-status">
+              <div className="flex items-start gap-3">
+                {isLoadingWalletStatus ? (
+                  <Loader2 className="h-5 w-5 text-muted-foreground animate-spin mt-0.5" />
+                ) : smartAccountStatus === 'deployed' ? (
+                  <CheckCircle2 className="h-5 w-5 text-success mt-0.5" />
+                ) : (
+                  <Wallet className="h-5 w-5 text-muted-foreground mt-0.5" />
+                )}
+                <div className="flex-1 space-y-1">
+                  <div className="flex items-center gap-2">
+                    <p className="text-sm font-medium">
+                      {isLoadingWalletStatus 
+                        ? "Checking smart wallet..." 
+                        : smartAccountStatus === 'deployed'
+                        ? "Smart wallet ready"
+                        : "Smart wallet setup"
+                      }
+                    </p>
+                    {smartAccountStatus === 'deployed' && (
+                      <Badge variant="success" className="text-xs">Ready</Badge>
+                    )}
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    {isLoadingWalletStatus
+                      ? "Detecting your wallet configuration..."
+                      : smartAccountStatus === 'deployed'
+                      ? `Your smart wallet is deployed and ready for gasless transfers`
+                      : `Your smart wallet will be created automatically on first send`
+                    }
+                  </p>
+                  {smartAccountAddress && !isLoadingWalletStatus && (
+                    <p className="text-xs font-mono text-muted-foreground truncate">
+                      {smartAccountAddress}
+                    </p>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {isConnected && walletType === 'smart-contract' && (
+            <div className="rounded-lg border bg-success/10 border-success/20 p-3" data-testid="banner-smart-contract-wallet">
+              <div className="flex items-start gap-3">
+                <CheckCircle2 className="h-5 w-5 text-success mt-0.5" />
+                <div className="flex-1 space-y-1">
+                  <p className="text-sm font-medium text-success-foreground">Smart contract wallet detected</p>
+                  <p className="text-xs text-muted-foreground">
+                    Your wallet supports gasless transactions natively
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
+
           <div className="space-y-2">
             <Label htmlFor="recipient">To</Label>
             <Input
