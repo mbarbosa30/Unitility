@@ -220,8 +220,12 @@ contract PaymasterPool {
         require(selector0 == 0x23b872dd, "First call must be transferFrom");
         
         // Decode transferFrom parameters (skip 4-byte selector)
+        bytes memory call0Params = new bytes(call0.length - 4);
+        for (uint i = 0; i < call0.length - 4; i++) {
+            call0Params[i] = call0[i + 4];
+        }
         (address from0, address to0, uint256 amount0) = abi.decode(
-            call0[4:],
+            call0Params,
             (address, address, uint256)
         );
         // If eoa is address(0) (undeployed, no initCode), skip owner check
@@ -243,8 +247,12 @@ contract PaymasterPool {
         require(selector1 == 0x23b872dd, "Second call must be transferFrom");
         
         // Decode transferFrom parameters (skip 4-byte selector)
+        bytes memory call1Params = new bytes(call1.length - 4);
+        for (uint i = 0; i < call1.length - 4; i++) {
+            call1Params[i] = call1[i + 4];
+        }
         (address from1, address to1, uint256 fee) = abi.decode(
-            call1[4:],
+            call1Params,
             (address, address, uint256)
         );
         // Both transfers must be from the same address
