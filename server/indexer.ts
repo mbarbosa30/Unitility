@@ -272,8 +272,21 @@ export class BlockchainIndexer {
           tx: log.transactionHash,
         });
 
-        // Add to watched pools
-        this.poolAddresses.add(poolAddress);
+        // Check for duplicate pool BEFORE mutating in-memory state
+        const existingPool = await storage.getPoolByContractAddress(poolAddress.toLowerCase());
+        if (existingPool) {
+          console.log('[Indexer] Pool already exists, skipping duplicate creation:', {
+            address: poolAddress,
+            existingId: existingPool.id,
+          });
+          
+          // Ensure pool is in watched set even if it already exists in DB
+          if (!this.poolAddresses.has(poolAddress)) {
+            this.poolAddresses.add(poolAddress);
+            this.watchPoolEvents();
+          }
+          continue;
+        }
 
         // Fetch token metadata from ERC-20 contract
         let tokenSymbol = 'TOKEN';
@@ -309,7 +322,7 @@ export class BlockchainIndexer {
           console.error('[Indexer] Failed to fetch token metadata, using defaults:', error);
         }
 
-        // Create pool in database
+        // Create pool in database with error handling for unique constraint violations
         const poolData = {
           contractAddress: poolAddress.toLowerCase(),
           tokenAddress: tokenAddress.toLowerCase(),
@@ -329,23 +342,53 @@ export class BlockchainIndexer {
           transactionHash: log.transactionHash,
         };
         
-        await storage.createPool(poolData);
+        try {
+          await storage.createPool(poolData);
 
-        console.log('[Indexer] Pool saved to database:', {
-          address: poolAddress,
-          token: `${tokenSymbol} (${tokenName})`,
-          sponsor,
-          fee: poolData.feePercentage + '%',
-          minTransfer: formatUnits(minTransfer, decimals),
-          blockNumber: poolData.blockNumber,
-          txHash: log.transactionHash,
-        });
+          console.log('[Indexer] Pool saved to database:', {
+            address: poolAddress,
+            token: `${tokenSymbol} (${tokenName})`,
+            sponsor,
+            fee: poolData.feePercentage + '%',
+            minTransfer: formatUnits(minTransfer, decimals),
+            blockNumber: poolData.blockNumber,
+            txHash: log.transactionHash,
+          });
 
-        // Verify pool creation with health checks
-        await this.verifyPoolCreation(poolAddress);
+          // Add to watched pools only after successful creation
+          this.poolAddresses.add(poolAddress);
 
-        // Restart pool event watchers with new pool
-        this.watchPoolEvents();
+          // Verify pool creation with health checks
+          await this.verifyPoolCreation(poolAddress);
+
+          // Restart pool event watchers with new pool
+          this.watchPoolEvents();
+        } catch (createError: any) {
+          // Handle unique constraint violation (duplicate)
+          if (createError?.code === '23505' || createError?.message?.includes('unique constraint')) {
+            console.warn('[Indexer] Unique constraint violation, pool already exists (race condition):', {
+              address: poolAddress,
+              error: createError.message,
+            });
+            
+            // Reconcile by reloading pool from database
+            const reconciledPool = await storage.getPoolByContractAddress(poolAddress.toLowerCase());
+            if (reconciledPool) {
+              console.log('[Indexer] Reconciled with existing pool:', reconciledPool.id);
+              
+              // Ensure pool is in watched set
+              if (!this.poolAddresses.has(poolAddress)) {
+                this.poolAddresses.add(poolAddress);
+                this.watchPoolEvents();
+              }
+            } else {
+              console.error('[Indexer] CRITICAL: Unique constraint violation but pool not found in database');
+            }
+          } else {
+            // Re-throw non-constraint errors
+            throw createError;
+          }
+        }
       } catch (error) {
         console.error('[Indexer] Error handling PoolCreated event:', error);
       }

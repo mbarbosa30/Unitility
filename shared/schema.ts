@@ -5,7 +5,7 @@ import { z } from "zod";
 
 export const pools = pgTable("pools", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  contractAddress: text("contract_address").notNull(),
+  contractAddress: text("contract_address").notNull().unique(),
   tokenAddress: text("token_address").notNull(),
   tokenSymbol: text("token_symbol").notNull(),
   tokenName: text("token_name").notNull(),
