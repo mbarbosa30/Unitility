@@ -1,9 +1,8 @@
 import { type Address, type Hex, type PublicClient, encodeFunctionData, parseAbiParameters, encodeAbiParameters, keccak256 } from 'viem';
 import { ENTRY_POINT_ADDRESS } from './userOp';
 
-// SimpleAccountFactory address on Base mainnet
-// TODO: Deploy SimpleAccountFactory to Base mainnet and update this address
-export const SIMPLE_ACCOUNT_FACTORY_ADDRESS = '0x0000000000000000000000000000000000000000' as const;
+// SimpleAccountFactory address on Base mainnet (canonical ERC-4337 v0.7 deployment)
+export const SIMPLE_ACCOUNT_FACTORY_ADDRESS = '0x9406Cc6185a346906296840746125a0E44976454' as const;
 
 // SimpleAccountFactory ABI for createAccount function
 const SIMPLE_ACCOUNT_FACTORY_ABI = [
@@ -67,12 +66,6 @@ export async function getSimpleAccountAddress(
   salt = BigInt(0),
   publicClient: PublicClient
 ): Promise<Address> {
-  if (SIMPLE_ACCOUNT_FACTORY_ADDRESS === '0x0000000000000000000000000000000000000000') {
-    throw new Error(
-      'SimpleAccountFactory not configured. Deploy SimpleAccountFactory to Base mainnet and update SIMPLE_ACCOUNT_FACTORY_ADDRESS.'
-    );
-  }
-  
   try {
     const address = await publicClient.readContract({
       address: SIMPLE_ACCOUNT_FACTORY_ADDRESS,
@@ -122,12 +115,6 @@ export function getSimpleAccountInitCode(
   ownerAddress: Address,
   salt = BigInt(0)
 ): Hex {
-  if (SIMPLE_ACCOUNT_FACTORY_ADDRESS === '0x0000000000000000000000000000000000000000') {
-    throw new Error(
-      'SimpleAccountFactory not configured. Deploy SimpleAccountFactory to Base mainnet and update SIMPLE_ACCOUNT_FACTORY_ADDRESS.'
-    );
-  }
-  
   // Encode the createAccount function call
   const callData = encodeFunctionData({
     abi: SIMPLE_ACCOUNT_FACTORY_ABI,
