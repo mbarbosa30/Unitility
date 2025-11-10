@@ -112,9 +112,25 @@ Preferred communication style: Simple, everyday language.
 **Smart Contracts (Base Mainnet):**
 - PaymasterFactory: Deploys new PaymasterPool instances for specific tokens
 - PaymasterPool: Manages ETH deposits, fee collection, and paymaster validation logic
+- SimpleAccountFactory: Creates smart contract wallets for users (deployed at 0x9406Cc6185a346906296840746125a0E44976454)
+- SimpleAccount: ERC-4337 v0.7 smart account with executeBatch support
 - ABIs extracted from Solidity and stored in `client/src/contracts/` directory
 - Deployment scripts in `scripts/` directory with proper event signatures
 - Contract helpers in `client/src/lib/contracts.ts` with address validation guards
+
+**Gasless Transfer Architecture (EOA-based):**
+- **User Tokens Stay in EOA:** Tokens remain in user's externally owned account (MetaMask, etc.)
+- **Smart Account Proxy:** Each user has a SimpleAccount (ERC-4337) that acts on their behalf
+- **One-Time Approval:** User approves SimpleAccount to spend tokens (like approving Uniswap)
+- **Gasless Execution Flow:**
+  1. User signs UserOperation off-chain (free)
+  2. Bundler (Pimlico) executes UserOp on user's smart account
+  3. Smart account calls `executeBatch([token, token], [transferFrom(eoa→recipient, amount), transferFrom(eoa→paymaster, fee)])`
+  4. Paymaster validates: correct EOA, sufficient balance/allowance, proper fee calculation
+  5. Paymaster sponsors gas in ETH, collects fee in tokens
+  6. Transaction succeeds - recipient gets tokens, paymaster gets fee, user pays no gas
+- **Counterfactual Deployment:** Smart accounts deployed on first use via initCode (bundler handles deployment)
+- **Security:** PaymasterPool validates executeBatch selector, transferFrom selectors, token addresses, EOA ownership, balance, allowance, and fee calculation
 
 **Event Indexer:**
 - Real-time blockchain event listener using Viem's `watchContractEvent`
