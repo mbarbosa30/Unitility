@@ -2,7 +2,7 @@ import { createWalletClient, createPublicClient, http, parseEther } from 'viem';
 import { base } from 'viem/chains';
 import { privateKeyToAccount } from 'viem/accounts';
 
-const POOL_ADDRESS = '0xd854ce29e07381bfd9459a370830c93dbe7256ff'; // Final PaymasterPool with paymasterAndData validation
+const POOL_ADDRESS = '0xf2734b01060c0c4df14202f4433d68e97d29cad3'; // Final PaymasterPool with paymasterAndData validation
 const ENTRYPOINT_ADDRESS = '0x5FF137D4b0FDCD49DcA30c7CF57E578a026d2789';
 const DEPOSIT_AMOUNT = parseEther('0.0005'); // 0.0005 ETH for testing
 const RPC_URL = process.env.VITE_BASE_RPC_URL || 'https://mainnet.base.org';

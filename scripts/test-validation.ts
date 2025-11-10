@@ -3,7 +3,7 @@ import { base } from 'viem/chains';
 
 const RPC_URL = process.env.VITE_BASE_RPC_URL || 'https://mainnet.base.org';
 const ENTRYPOINT_ADDRESS = '0x5FF137D4b0FDCD49DcA30c7CF57E578a026d2789';
-const PAYMASTER_POOL = '0xd854ce29e07381bfd9459a370830c93dbe7256ff';
+const PAYMASTER_POOL = '0xf2734b01060c0c4df14202f4433d68e97d29cad3';
 const TALENT_TOKEN = '0x9a33406165f562e16c3abd82fd1185482e01b49a';
 
 const publicClient = createPublicClient({
