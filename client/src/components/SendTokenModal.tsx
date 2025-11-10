@@ -313,10 +313,36 @@ export default function SendTokenModal({ preselectedToken, triggerButton }: Send
         );
       }
       
-      // Step 5: Attach signature to create complete UserOperation
+      // Step 5: Simulate executeBatch locally to check for reverts
+      console.log('[SendToken] Simulating executeBatch call...');
+      try {
+        const simulationResult = await publicClient!.call({
+          to: smartAccountAddress,
+          data: unsignedUserOp.callData,
+          account: ENTRY_POINT_ADDRESS, // Simulate as if EntryPoint is calling
+        });
+        console.log('[SendToken] CallData simulation SUCCESS:', {
+          result: simulationResult,
+        });
+      } catch (simError: any) {
+        console.error('[SendToken] CallData simulation FAILED:', {
+          error: simError,
+          message: simError?.message,
+          shortMessage: simError?.shortMessage,
+          details: simError?.details,
+          cause: simError?.cause,
+        });
+        
+        throw new Error(
+          `CallData would revert! ${simError?.shortMessage || simError?.message || 'Unknown error'}. ` +
+          `This is likely why AA23 is failing. Check token allowances and balances.`
+        );
+      }
+      
+      // Step 6: Attach signature to create complete UserOperation
       const signedUserOp = signUserOp(unsignedUserOp, signature);
       
-      // Step 6: Submit to bundler
+      // Step 7: Submit to bundler
       const userOpHashResult = await bundlerClient.sendUserOperation(
         signedUserOp,
         ENTRY_POINT_ADDRESS
