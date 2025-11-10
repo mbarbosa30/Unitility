@@ -169,15 +169,15 @@ export function buildUserOp(params: BuildUserOpParams): Omit<UserOperation, 'sig
     ],
   });
   
-  // Step 5: Pack paymasterAndData with validation structure
+  // Step 5: Pack paymasterAndData for PaymasterPool validation
   // Format: paymaster address (20B) + postGas (32B) + context (96B) = 148 bytes
-  // postGas: uint128 postVerificationGasLimit + uint128 postOpGasLimit (tightly packed in 32 bytes)
+  // postGas: uint128 postVerificationGasLimit + uint128 postOpGasLimit (tightly packed)
   // context: abi.encode(address recipient, uint256 amount, uint256 fee)
   
-  const postVerificationGasLimit = BigInt(60000); // Post-verification gas limit
-  const postOpGasLimit = BigInt(150000); // Post-op gas limit
+  const postVerificationGasLimit = BigInt(60000); // Post-verification gas limit (min 50000)
+  const postOpGasLimit = BigInt(150000); // Post-op gas limit (min 100000)
   
-  // Pack postGas as two uint128 values tightly in 32 bytes (NOT ABI encoded)
+  // Pack postGas as two uint128 values tightly in 32 bytes
   // Upper 16 bytes: postVerificationGasLimit, Lower 16 bytes: postOpGasLimit
   const postVerifHex = pad(toHex(postVerificationGasLimit), { size: 16 });
   const postOpHex = pad(toHex(postOpGasLimit), { size: 16 });
@@ -199,7 +199,7 @@ export function buildUserOp(params: BuildUserOpParams): Omit<UserOperation, 'sig
   // Validate paymasterAndData structure for debugging
   console.log('[buildUserOp] paymasterAndData structure:', {
     totalLength: paymasterAndData.length,
-    expectedLength: '0x' + (20 + 32 + 96) * 2 + 2, // 148 bytes = 296 hex chars + '0x' = 298
+    expectedLength: '0x' + (20 + 32 + 96) * 2, // 148 bytes = 296 hex chars + '0x' = 298
     paymasterAddress: paymasterAddress,
     paymasterAddressLength: paymasterAddress.length,
     postGasPackedLength: postGasPacked.length,
