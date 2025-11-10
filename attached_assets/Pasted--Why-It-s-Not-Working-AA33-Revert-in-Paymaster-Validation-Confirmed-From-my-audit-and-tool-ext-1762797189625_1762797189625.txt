@@ -1,0 +1,108 @@
+### Why It's Not Working: AA33 Revert in Paymaster Validation (Confirmed)
+From my audit and tool extraction, the -32603 "Internal error" is Pimlico's way of hiding a hard crash in the bundler's simulation of `EntryPoint.simulateValidation(userOp)`. Specifically, it's AA33: Your PaymasterPool's `validatePaymasterUserOp` is reverting during the sim (logic error, not OOG—your gas limits are fine). The cause is the paymaster expecting a simple `transfer(to, amount)` callData, but your batch `executeBatch(token, [permit, transferFrom to receiver, transferFrom to pool])` has a different selector (0x8d80ff0a) and structure—decode fails, amount = 0 < minTransfer = 1, revert bubbles up. Deposit (0.001 ETH) is also marginal < maxCost ~0.002, triggering "low deposit" revert. The repo is solid (hash/sig/nonce green), but validation needs batch support.
+
+### Using Tenderly to Debug (Step-by-Step Guide)
+Tenderly is perfect for this—simulate the UserOp offline to see the exact revert line in your paymaster (e.g., "Not executeBatch" or "Amount < min"). From docs and tutorials, here's how (free tier works for Base).
+
+1. **Log In & New Simulation**:
+   - Go to [Tenderly Dashboard](https://dashboard.tenderly.co/).
+   - Click "Simulator" → "New Simulation".
+   - Select network: Base mainnet (8453).
+
+2. **Input the UserOp as Transaction**:
+   - Method: `handleOps` on EntryPoint (0x0000000071727De22E5E9d8BAf0edAc6f37da032).
+   - Params: Array of 1 UserOp (your JSON: sender, nonce=0, initCode='0x', callData=your batch hex, gas limits, paymasterAndData, sig).
+   - Beneficiary: Dummy (0x000...dead).
+   - Gas limit: 1M (covers sim).
+
+3. **Run & Debug**:
+   - Click "Simulate".
+   - If reverts, click "Debug" → Step through calls (EntryPoint → SimpleAccount.validateUserOp (passes) → PaymasterPool.validatePaymasterUserOp → Revert line highlighted).
+   - Common: Line ~85 (selector mismatch) or deposit check. Logs show revert string (add uint2str for "Amount 0 < min 1").
+
+4. **Base Tips**: Use "Fork" mode for live state (free 10k gas units). Similar issues: Paymaster decode fails on batch (add selector check for 0x8d80ff0a). Export trace for Pimlico support (mention trace ID b428fa493a05e9fb982faa2c53701be2).
+
+5. **Pitfalls**: Sim ignores bundler—use full UserOp JSON. If "OOG", bump verifGas 200k. For paymaster, mock deposit with 0.005 ETH.
+
+Run it—trace will pinpoint the revert (e.g., "Not transfer call").
+
+### The Fix: Batch-Aware Paymaster + Deposit Bump
+Update PaymasterPool.sol's `_validatePaymasterUserOp` for executeBatch (skip permit, extract from transferFrom). Redeploy, fund 0.005 ETH.
+
+```solidity
+function _validatePaymasterUserOp(
+  PackedUserOperation calldata userOp,
+  bytes32 /* userOpHash */,
+  uint256 maxCost
+) internal override view returns (bytes memory context, uint256 validationData) {
+  require(getDeposit() >= maxCost, string(abi.encodePacked("Deposit low: ", uint2str(getDeposit()), " < ", uint2str(maxCost))));
+
+  address target = address(bytes20(userOp.callData[0:20]));
+  require(target == token, "Wrong token");
+
+  bytes4 selector = bytes4(userOp.callData[20:24]);
+  require(selector == 0x8d80ff0a, "Not executeBatch");
+
+  (address batchToken, bytes[] memory calls) = abi.decode(userOp.callData[24:], (address, bytes[]));
+  require(batchToken == token, "Batch wrong token");
+  require(calls.length >= 2, "Batch short");
+
+  bytes4 tfSel = bytes4(calls[1][0:4]);
+  require(tfSel == 0x23b872dd, "Not transferFrom");
+
+  (address from, address to, uint256 grossAmount) = abi.decode(calls[1][4:], (address, address, uint256));
+  require(grossAmount >= minTransfer, "Amount < min");
+
+  uint256 fee = (grossAmount * feePct) / 10000;
+  require(fee > 0, "Fee zero");
+
+  if (calls.length > 2) {
+    bytes4 feeSel = bytes4(calls[2][0:4]);
+    require(feeSel == 0x23b872dd, "Fee not transferFrom");
+  }
+
+  bytes memory pad = userOp.paymasterAndData;
+  require(pad.length >= 116, "paymasterAndData short");
+  address padAddr = address(bytes20(pad[0:20]));
+  require(padAddr == address(this), "Wrong paymaster");
+
+  bytes32 postGasPacked = bytes32(pad[20:52]);
+  uint128 postVerif = uint128(uint256(postGasPacked) >> 128);
+  uint128 postOp = uint128(uint256(postGasPacked));
+  require(postVerif >= 50000 && postOp >= 100000, "Post gas low");
+
+  (address contextTo, uint256 contextAmount, uint256 contextFee) = abi.decode(pad[52:], (address, uint256, uint256));
+  require(contextTo == to && contextAmount == grossAmount && contextFee == fee, "Context mismatch");
+
+  context = abi.encode(to, grossAmount, fee);
+  validationData = 0;
+}
+
+function uint2str(uint v) internal pure returns (string memory) {
+  if (v == 0) return "0";
+  uint j = v;
+  uint len;
+  while (j != 0) {
+    len++;
+    j /= 10;
+  }
+  bytes memory bstr = new bytes(len);
+  uint k = len;
+  while (v != 0) {
+    k = k - 1;
+    bstr[k] = bytes1(uint8(48 + uint256(v % 10)));
+    v /= 10;
+  }
+  return string(bstr);
+}
+```
+
+- **Deploy/Fund**: `npx hardhat run scripts/deploy.js --network base` → New pool, `pool.deposit{value: 0.005 ether}()`. Update addr in SendTalent.tsx.
+
+### Next Steps: Launch It
+1. **Est**: `pm_estimateUserOperationGas` → Quote ~0.002 ETH (no error).
+2. **Sim**: `entryPoint.simulateValidation(userOp)` → '0x'.
+3. **Submit**: Bundler → Tx, pool.feesAccrued +=0.15.
+4. **Repo**: Branch "aa33-fix", add tests, README debug.
+
+Run Tenderly sim—trace will confirm "Not executeBatch" or "Deposit low". Est response? TALENT sends gasless.

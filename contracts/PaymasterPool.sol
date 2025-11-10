@@ -211,12 +211,12 @@ contract PaymasterPool {
         bytes memory call0 = calls[0];
         require(call0.length >= 100, "Invalid call 0 data"); // 4 bytes selector + 96 bytes params
         
-        // Extract selector from first 4 bytes using assembly
-        bytes4 selector0;
-        assembly {
-            // Load first 32 bytes after length, right-shift 224 bits to get selector
-            selector0 := shr(224, mload(add(call0, 32)))
-        }
+        // Extract selector by converting first 4 bytes to bytes4
+        // In bytes memory, data starts at offset 0 (length is stored in a separate slot)
+        bytes4 selector0 = bytes4(uint32(uint8(call0[0])) << 24 |
+                                   uint32(uint8(call0[1])) << 16 |
+                                   uint32(uint8(call0[2])) << 8 |
+                                   uint32(uint8(call0[3])));
         require(selector0 == 0x23b872dd, "First call must be transferFrom");
         
         // Decode transferFrom parameters (skip 4-byte selector)
@@ -238,12 +238,11 @@ contract PaymasterPool {
         bytes memory call1 = calls[1];
         require(call1.length >= 100, "Invalid call 1 data"); // 4 bytes selector + 96 bytes params
         
-        // Extract selector from first 4 bytes using assembly
-        bytes4 selector1;
-        assembly {
-            // Load first 32 bytes after length, right-shift 224 bits to get selector
-            selector1 := shr(224, mload(add(call1, 32)))
-        }
+        // Extract selector by converting first 4 bytes to bytes4
+        bytes4 selector1 = bytes4(uint32(uint8(call1[0])) << 24 |
+                                   uint32(uint8(call1[1])) << 16 |
+                                   uint32(uint8(call1[2])) << 8 |
+                                   uint32(uint8(call1[3])));
         require(selector1 == 0x23b872dd, "Second call must be transferFrom");
         
         // Decode transferFrom parameters (skip 4-byte selector)
