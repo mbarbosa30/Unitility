@@ -1,0 +1,120 @@
+### The WTF Bug: '0x' Prefix Pollution in Your Inner Pack Concatenation
+Holy shit, I see it—after staring at your `getUserOpHash` code like it's a crime scene, the AA23 is exploding because your `innerPacked` string is **garbage bytes** from embedded `'0x'` prefixes. This corrupts the entire 244B pack, shifting the `innerHash` into oblivion → wrong `userOpHash` → signature recovers some random address (not your EOA owner) → SimpleAccount's `_validateSignature` fails → EntryPoint validation reverts → Pimlico bundler spits AA23.
+
+This is a classic JS string concat trap: You're mixing raw hex slices (no '0x') with `toHex()` outputs (which *do* have '0x'), then `join('')` glues them raw. The result? `'0x'` bytes (0x3078) litter the middle of your pack like landmines, turning a clean 244B input into a 260B+ mess with invalid hex. Keccak on garbage = garbage hash = sig fail.
+
+**Proof**: Let's simulate a snippet (your values approximate):
+- `userOp.sender.slice(2)` = `'e7c0dad9...'` (40 chars, clean).
+- `toHex(nonce, 32)` = `'0x0000000000000000000000000000000000000000000000000000000000000000'` (66 chars, *with* '0x').
+- Next: `keccak256(initCode).slice(2)` = clean 64 chars.
+- `join('')` on array: Starts clean, but after first `toHex`, it's `...e7c0...0x0000...` → The '0x' becomes literal bytes 30 78 in the hex string, invalidating everything downstream.
+
+Boom—hash diverges by the second field. Bundler sim sees bad recovery, reverts.
+
+#### Quick Math: Expected vs. Actual Pack Length
+- **Spec Expected**: 244B (488 hex chars after '0x').
+  - sender: 40 chars
+  - nonce: 64
+  - initCodeHash: 64
+  - callDataHash: 64
+  - accountGasLimits: 64 (full packed bytes32)
+  - preVerifGas: 64
+  - gasFees: 64
+  - paymasterHash: 64
+  - Total: 488 chars.
+- **Your Code**: ~500+ chars from 4× extra '0x' (8 chars each from 4 `toHex` calls: nonce, preVerif, maxFee, maxPrio). Plus unpacking slices add no length but shift values wrong if endianness flips.
+
+### Fixes: Two Paths (Pick Your Poison)
+#### **Path 1: Strip All '0x' Before Join (Minimal Change, ~2 Lines)**
+Update your array to `.slice(2)` *every* `toHex` and `keccak256` output. Keep unpacking if you want (it's correct for values, just redundant).
+
+```typescript
+export function getUserOpHash(
+  userOp: Omit<PackedUserOperation, 'signature'>,
+  entryPoint: Address = ENTRY_POINT_ADDRESS,
+  chainId: number = base.id
+): Hex {
+  // Unpack gas (your current logic is fine—high/low order matches spec big-endian)
+  const accountGasLimitsHex = userOp.accountGasLimits.slice(2);
+  const verificationGasLimit = BigInt('0x' + accountGasLimitsHex.slice(0, 32)); // First 16B → high uint128
+  const callGasLimit = BigInt('0x' + accountGasLimitsHex.slice(32, 64)); // Next 16B → low
+  const gasFeesHex = userOp.gasFees.slice(2);
+  const maxFeePerGas = BigInt('0x' + gasFeesHex.slice(0, 32)); // High
+  const maxPriorityFeePerGas = BigInt('0x' + gasFeesHex.slice(32, 64)); // Low
+
+  // Build array of *clean* hex strings (no '0x')
+  const parts = [
+    userOp.sender.slice(2), // 40 chars
+    toHex(userOp.nonce, 32).slice(2), // 64 chars (strip '0x')
+    keccak256(userOp.initCode || '0x').slice(2), // 64
+    keccak256(userOp.callData).slice(2), // 64
+    toHex(verificationGasLimit, 16).slice(2), // 32 chars (16B uint128, no pad needed)
+    toHex(callGasLimit, 16).slice(2), // 32 chars
+    toHex(userOp.preVerificationGas, 32).slice(2), // 64 chars
+    toHex(maxFeePerGas, 16).slice(2), // 32
+    toHex(maxPriorityFeePerGas, 16).slice(2), // 32
+    keccak256(userOp.paymasterAndData || '0x').slice(2), // 64
+  ];
+
+  // Join clean hex → 488 chars
+  const innerPacked = '0x' + parts.join('');
+  const innerHash = keccak256(innerPacked);
+
+  // Outer unchanged (ABI is correct)
+  const userOpHash = keccak256(
+    encodeAbiParameters(
+      parseAbiParameters('bytes32, address, uint256'),
+      [innerHash, entryPoint, BigInt(chainId)]
+    )
+  );
+  return userOpHash;
+}
+```
+
+- **Why This Works**: All parts are pure hex strings (no '0x' bytes). `toHex(BigInt, 16)` for uint128 outputs exactly 32 chars (left-padded zeros if <16B). Unpacking preserves big-endian (slice(0,32) = high bytes first).
+- **Test It**: Log `parts.length` (should be 10 items, total chars 488). Compute hash, sign, then `ethers.verifyMessage(keccak256('\x19Ethereum Signed Message:\n32' + userOpHash), sig)` → Must = owner.
+
+#### **Path 2: Ditch Unpacking—Use Full Packed Fields (Cleaner, Recommended)**
+Skip unpack/repack entirely—concat the pre-packed bytes32 as-is. This matches the spec's assembly 1:1, zero endian risk.
+
+```typescript
+export function getUserOpHash(
+  userOp: Omit<PackedUserOperation, 'signature'>,
+  entryPoint: Address = ENTRY_POINT_ADDRESS,
+  chainId: number = base.id
+): Hex {
+  const parts = [
+    userOp.sender.slice(2), // 40 chars
+    toHex(userOp.nonce, 32).slice(2), // 64
+    keccak256(userOp.initCode || '0x').slice(2), // 64
+    keccak256(userOp.callData).slice(2), // 64
+    userOp.accountGasLimits.slice(2), // 64 chars (full packed bytes32—no unpack!)
+    toHex(userOp.preVerificationGas, 32).slice(2), // 64
+    userOp.gasFees.slice(2), // 64 chars (full packed!)
+    keccak256(userOp.paymasterAndData || '0x').slice(2), // 64
+  ];
+
+  const innerPacked = '0x' + parts.join('');
+  const innerHash = keccak256(innerPacked);
+
+  // Outer same
+  return keccak256(
+    encodeAbiParameters(
+      parseAbiParameters('bytes32, address, uint256'),
+      [innerHash, entryPoint, BigInt(chainId)]
+    )
+  );
+}
+```
+
+- **Pro**: Shorter, no BigInt conversions. Assumes `userOp.accountGasLimits` was built correctly upstream (e.g., via `pack([verifGas, callGas], 'uint128')` as bytes32).
+- **If Upstream Wrong**: Check how you construct `userOp`—use `ethers.solidityPacked(['uint128', 'uint128'], [verifGas, callGas])` for the bytes32.
+
+### Other Quick Checks (If Fix Doesn't Land)
+- **preVerificationGas**: Your code has `toHex( ,32)`—correct (32B uint256). But confirm value: 21000 is fine, but if BigInt overflow, log it.
+- **Nonce**: Ensure `userOp.nonce` is 0 (as string '0x0' or BigInt 0)—v0.7 treats as uint192, but `toHex( ,32)` pads fine.
+- **Bundler Sim**: Before submit, call Pimlico's `eth_estimateUserOperationGas` with your userOp (dummy sig: `0x`.repeat(32) + '00' for v=0). If it fails with AA23, it's hash; else sig.
+- **Onchain Verify**: After fix, deploy a test script: Call `EntryPoint.getUserOpHash(userOp)` → Compare to yours. 100% match? Hash good.
+- **Wagmi Signing**: `{ raw: userOpHash }` is correct (treats as bytes32). But test: `const msgHash = ethers.hashMessage(ethers.getBytes(userOpHash));` → Sign that directly if paranoid.
+
+This is the repo-killer bug—string pollution from lazy slicing. Fix the join, resubmit to Pimlico, and watch TALENT fly gasless. If logs show length !=488, or hash mismatch onchain, paste 'em— we'll nail it. You're close; this is it.
