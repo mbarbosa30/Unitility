@@ -1,0 +1,86 @@
+### AA33 Deep Dive: Paymaster Validation Revert During Bundler Sim
+Your bundler response (status 200 with -32501 wrapped error) confirms **AA33: validatePaymasterUserOp Reverted**—the EntryPoint sim calls your PaymasterPool's validation, it bombs (logic error, not OOG), and Pimlico rejects the UserOp pre-bundle. The "or OOG" is bundler boilerplate (common for gas-related reverts, but your limits 150k verif/100k call are sufficient; real OOG would be AA21/AA22). -32603 is generic "internal" for sim fails, with trace ID `d4fb654f564f09a270e1b9e445914cc6` for Pimlico support (email them if stuck, but we can fix).
+
+From Pimlico/Alchemy docs:
+- **AA33 Cause**: Paymaster's `validatePaymasterUserOp` reverts (e.g., require fail on decode, deposit check, or context unpack). No non-zero validationData returned (that'd be AA34).
+- **Common Triggers**: Bad callData decode (your batch vs. simple transfer expect), low deposit (< maxCost ~0.002 ETH), invalid paymasterAndData (context not matching amount/fee), or postOp gas unpack fail (v0.7 requires paymaster validate postOpGas >= expected).
+- **Not OOG**: Your preVerifGas 50k and verifGas 150k cover decode (10-20k gas); bump if paranoid.
+
+Your hash/sig/nonce are locked (recovery true), so sim succeeds SimpleAccount → Hits paymaster → Revert on your code's "Must be transfer call" (batch selector mismatch) or amount decode (garbage from batch).
+
+### Fixes: Paymaster Upgrade + Gas/Deposit Bump
+#### 1. PaymasterPool.sol: Handle Batch CallData (Redeploy)
+Your validation assumes simple transfer—update for `executeBatch`. Add this override (full fn; deploy new pool with 0.005 ETH).
+
+```solidity
+function _validatePaymasterUserOp(
+  PackedUserOperation calldata userOp,
+  bytes32 /* userOpHash */,
+  uint256 maxCost
+) internal override view returns (bytes memory context, uint256 validationData) {
+  require(getDeposit() >= maxCost, "Deposit low"); // Bump to 0.005 ETH
+
+  // Decode executeBatch: token, calls[] (permit[0], transferFrom[1], fee[2]?)
+  address target = address(bytes20(userOp.callData[0:20]));
+  require(target == token, "Wrong token");
+
+  bytes4 selector = bytes4(userOp.callData[20:24]);
+  require(selector == bytes4(0x8d80ff0a), "Not executeBatch"); // keccak('executeBatch(address,bytes[])')
+
+  // Decode params
+  (address batchToken, bytes[] memory calls) = abi.decode(userOp.callData[24:], (address, bytes[]));
+  require(batchToken == token, "Batch wrong token");
+  require(calls.length >= 2, "Batch short");
+
+  // calls[1]: transferFrom(EOA, receiver, amount - fee)
+  bytes4 tfSel = bytes4(calls[1][0:4]);
+  require(tfSel == bytes4(0x23b872dd), "Not transferFrom"); // keccak('transferFrom(address,address,uint256)')
+
+  (address from, address to, uint256 grossAmount) = abi.decode(calls[1][4:], (address, address, uint256));
+  require(grossAmount >= minTransfer, "Amount < min");
+
+  uint256 fee = (grossAmount * feePct) / 10000;
+  require(fee > 0, "Fee 0");
+
+  // Optional calls[2] fee check
+  if (calls.length > 2) {
+    bytes4 feeSel = bytes4(calls[2][0:4]);
+    require(feeSel == bytes4(0x23b872dd), "Fee not transferFrom");
+  }
+
+  // Unpack paymasterAndData context (to, amount, fee) for postOp
+  (address contextTo, uint256 contextAmount, uint256 contextFee) = abi.decode(
+    bytes.concat(abi.encodePacked(address(0), userOp.paymasterAndData[40:])), // Skip addr + postGas
+    (address, uint256, uint256)
+  );
+  require(contextTo == to && contextAmount == grossAmount && contextFee == fee, "Context mismatch");
+
+  context = abi.encode(to, grossAmount, fee);
+  validationData = 0; // Valid
+}
+```
+
+- **Deploy**: `npx hardhat run scripts/deploy.js --network base` → New pool addr, fund 0.005 ETH. Update client.
+- **PostGas Unpack**: v0.7 spec requires validating postOpGas (tail of paymasterAndData) >= expected (~50k). Above skips for MVP; add if needed.
+
+#### 2. Client: Bump Gas & Context Pack
+In buildUserOp:
+```typescript
+userOp.verificationGasLimit = 200000n; // +50k for batch decode
+userOp.callGasLimit = 150000n; // Batch + permit
+userOp.preVerificationGas = 60000n; // Buffer
+
+// Context after postGas
+const postGas = solidityPacked(['uint128', 'uint128'], [60000n, 150000n]); // postVerif, postOp
+const context = encodeAbiParameters(parseAbiParameters('address to, uint256 amount, uint256 fee'), [receiver, amount, fee]).slice(2);
+const paymasterAndData = paymasterPool.slice(2) + postGas.slice(2) + context; // Order: addr + postGas + context
+userOp.paymasterAndData = `0x${paymasterAndData}`;
+```
+
+### Test & Launch
+1. **Deposit**: `pool.deposit{value: 0.004 ether}()` → Check getDeposit() > 0.005.
+2. **Est**: `pm_estimateUserOperationGas` → Quote, no AA33.
+3. **Sim**: `entryPoint.simulateValidation(userOp)` → '0x'.
+4. **Submit**: Bundler → Tx mined, logs fee +1.
+
+This batch-validates, context-matches. If sim "context mismatch", swap postGas/context order. Share est—we're sending.

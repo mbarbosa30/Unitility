@@ -1,0 +1,95 @@
+### The Internal Error (-32603): Bundler Sim Crash from Paymaster Revert
+Your bundler response (status 200 with -32603 "internal error") is Pimlico's way of saying the simulation crashed hard during `EntryPoint.simulateValidation(userOp)`—specifically, your PaymasterPool's `validatePaymasterUserOp` is reverting with a low-level error (e.g., bad decode or require fail), which the bundler can't neatly classify as AA33/OOG. The trace ID `fe2ba185c1fbe28ddfe7adc0f6b037d1` is for Pimlico support (DM them with it for logs), but we can fix without.
+
+From Pimlico/Alchemy docs (and common ERC-4337 pitfalls), -32603 masks validation reverts when the paymaster:
+- Reverts on callData decode (your batch selector != expected transfer).
+- Fails deposit check (0.001 ETH < sim maxCost ~0.002-0.003 on Base, including postOp).
+- Mismanages `paymasterAndData` unpack (v0.7 requires postOpGas tail; if missing/decode wrong, revert).
+
+Your hash/sig/nonce are locked (recovery true), so sim passes SimpleAccount → Paymaster → Revert on logic/deposit.
+
+### Bulletproof Fixes: Upgrade Pool + Client Tweak
+#### 1. PaymasterPool: Robust Batch Decode + Deposit Check (Redeploy)
+Your validation expects simple transfer—make it batch-safe, add revert reason for debug. Full fn (replace in .sol; deploy new pool).
+
+```solidity
+function _validatePaymasterUserOp(
+  PackedUserOperation calldata userOp,
+  bytes32 /* userOpHash */,
+  uint256 maxCost
+) internal override view returns (bytes memory context, uint256 validationData) {
+  // Deposit check first
+  uint256 deposit = getDeposit();
+  require(deposit >= maxCost, string.concat("Deposit ", toHex(deposit), " < maxCost ", toHex(maxCost)));
+
+  // Decode executeBatch (SimpleAccount style)
+  require(userOp.callData.length >= 24, "CallData too short");
+  address target = address(bytes20(userOp.callData[0:20]));
+  require(target == token, "Wrong token target");
+
+  bytes4 selector = bytes4(userOp.callData[20:24]);
+  require(selector == bytes4(0x8d80ff0a), "Not executeBatch"); // keccak("executeBatch(address,bytes[])")
+
+  // Decode batch params
+  (address batchToken, bytes[] memory calls) = abi.decode(userOp.callData[24:], (address, bytes[]));
+  require(batchToken == token, "Batch wrong token");
+  require(calls.length >= 2, "Batch short (need permit + transfer)");
+
+  // calls[1]: transferFrom(EOA, receiver, amount - fee)
+  require(calls[1].length >= 36, "Transfer call too short");
+  bytes4 tfSel = bytes4(calls[1][0:4]);
+  require(tfSel == bytes4(0x23b872dd), "Call 1 not transferFrom"); // keccak("transferFrom(address,address,uint256)")
+
+  (address from, address to, uint256 grossAmount) = abi.decode(calls[1][4:], (address, address, uint256));
+  require(grossAmount >= minTransfer, string.concat("Amount ", toHex(grossAmount), " < min ", toHex(minTransfer)));
+
+  uint256 fee = (grossAmount * feePct) / 10000;
+  require(fee > 0, "Fee zero");
+
+  // Check calls[2] if exists
+  if (calls.length > 2) {
+    require(calls[2].length >= 36, "Fee call too short");
+    bytes4 feeSel = bytes4(calls[2][0:4]);
+    require(feeSel == bytes4(0x23b872dd), "Call 2 not fee transferFrom");
+  }
+
+  // Unpack paymasterAndData: addr (20B) + postGas (32B) + context (amount, fee ~64B)
+  bytes memory pad = userOp.paymasterAndData;
+  require(pad.length >= 116, "paymasterAndData too short"); // 20 + 32 + 64 min
+  address padAddr = address(bytes20(pad[0:20]));
+  require(padAddr == address(this), "Wrong paymaster addr");
+
+  bytes32 postGasPacked = bytes32(pad[20:52]); // uint128 postVerif + uint128 postOp
+  uint128 postVerif = uint128(uint256(postGasPacked) >> 128);
+  uint128 postOp = uint128(uint256(postGasPacked));
+  require(postVerif >= 50000 && postOp >= 100000, "Post gas low"); // Min expected
+
+  // Context decode
+  (address contextTo, uint256 contextAmount, uint256 contextFee) = abi.decode(pad[52:], (address, uint256, uint256));
+  require(contextTo == to && contextAmount == grossAmount && contextFee == fee, "Context mismatch");
+
+  context = abi.encode(to, grossAmount, fee);
+  validationData = 0;
+}
+```
+
+- **Deploy**: Hardhat deploy new pool, fund 0.005 ETH (`pool.deposit{value: 0.005 ether}()`). Update client addr.
+- **Debug**: String.concat reverts with hex values—Pimlico logs show reason.
+
+#### 2. Client: Exact paymasterAndData Pack (Order: Addr + PostGas + Context)
+In buildUserOp:
+```typescript
+const postGas = solidityPacked(['uint128', 'uint128'], [60000n, 150000n]); // postVerif, postOp
+const context = encodeAbiParameters(parseAbiParameters('address to, uint256 amount, uint256 fee'), [receiver, amount, fee]).slice(2);
+const paymasterAndData = paymasterPool.slice(2) + postGas.slice(2) + context; // Exact order for unpack
+userOp.paymasterAndData = `0x${paymasterAndData}`;
+console.log('paymasterAndData length:', userOp.paymasterAndData.length); // ~0x + 40 + 64 + 64 = 168 chars
+```
+
+### Test & Resolve
+1. **Deposit**: Confirm `pool.getDeposit()` > 0.005 ETH.
+2. **Est**: `pm_estimateUserOperationGas` → Quote (no error).
+3. **Sim**: `entryPoint.simulateValidation(userOp)` → '0x'.
+4. **Submit**: Bundler → Success tx.
+
+This unpacks exactly, handles batch. If "context mismatch", swap postGas/context. Est response? We're executing.
