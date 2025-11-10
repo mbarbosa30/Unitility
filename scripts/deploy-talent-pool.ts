@@ -4,6 +4,8 @@
 import { createWalletClient, createPublicClient, http, parseEther } from 'viem';
 import { base } from 'viem/chains';
 import { privateKeyToAccount } from 'viem/accounts';
+import { readFileSync } from 'fs';
+import { join } from 'path';
 
 const ENTRY_POINT = '0x5FF137D4b0FDCD49DcA30c7CF57E578a026d2789'; // v0.6 EntryPoint
 const TALENT_TOKEN = '0x9a33406165f562e16c3abd82fd1185482e01b49a'; // Correct TALENT token
@@ -46,13 +48,24 @@ async function main() {
     process.exit(1);
   }
 
-  const bytecode = process.env.PAYMASTER_POOL_BYTECODE;
-  if (!bytecode) {
-    console.error('❌ PAYMASTER_POOL_BYTECODE not found in environment');
+  // Read bytecode directly from file to ensure we use freshly compiled code
+  const bytecodePath = join(process.cwd(), 'scripts', 'paymaster-pool-bytecode.txt');
+  let bytecode: string;
+  
+  try {
+    bytecode = readFileSync(bytecodePath, 'utf-8').trim();
+    console.log(`📄 Loaded bytecode from: ${bytecodePath}`);
+    console.log(`📏 Bytecode length: ${bytecode.length} chars`);
+    
+    // Calculate and display hash for verification
+    const crypto = await import('crypto');
+    const hash = crypto.createHash('sha256').update(bytecode).digest('hex');
+    console.log(`🔐 Bytecode hash: ${hash}\n`);
+  } catch (error: any) {
+    console.error(`❌ Failed to read bytecode from ${bytecodePath}`);
     console.log('\n📝 To deploy:');
-    console.log('1. Compile contract: npm run compile:contracts');
-    console.log('2. Copy bytecode to PAYMASTER_POOL_BYTECODE secret');
-    console.log('3. Run this script again\n');
+    console.log('1. Compile contract: tsx scripts/compile-paymaster-v06.ts');
+    console.log('2. Run this script again\n');
     process.exit(1);
   }
 
