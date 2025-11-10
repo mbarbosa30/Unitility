@@ -258,6 +258,31 @@ export default function SendTokenModal({ preselectedToken, triggerButton }: Send
       // Step 4: Sign the hash with connected wallet
       const signature = await signMessageAsync({ message: { raw: userOpHash as Hex } });
       
+      // Step 4.5: Verify signature (debugging AA23)
+      const { recoverMessageAddress } = await import('viem');
+      const recoveredAddress = await recoverMessageAddress({
+        message: { raw: userOpHash },
+        signature,
+      });
+      
+      console.log('[SendToken] Signature verification:', {
+        userOpHash,
+        signature,
+        signatureLength: signature.length,
+        expectedLength: 132, // 0x + 130 hex chars (65 bytes)
+        recoveredAddress,
+        expectedOwner: address,
+        recoveryMatch: recoveredAddress.toLowerCase() === address.toLowerCase(),
+      });
+      
+      if (recoveredAddress.toLowerCase() !== address.toLowerCase()) {
+        throw new Error(
+          `Signature recovery FAILED! ` +
+          `Recovered: ${recoveredAddress}, Expected: ${address}. ` +
+          `This means the signature is invalid.`
+        );
+      }
+      
       // Step 5: Attach signature to create complete UserOperation
       const signedUserOp = signUserOp(unsignedUserOp, signature);
       
