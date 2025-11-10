@@ -2,53 +2,7 @@
 
 ## Overview
 
-Paymaster Market is a Web3 application that enables gasless token transfers using ERC-4337 Account Abstraction. The platform operates as a decentralized marketplace where sponsors deposit ETH into pools for specific tokens, allowing users to send those tokens without needing ETH for gas fees. Users pay a small percentage fee in the token they're sending, while sponsors earn yield in tokens they believe in, and rebalancers can profit from arbitrage opportunities when price discounts emerge.
-
-The application follows a "Venmo-like" user experience philosophy: send any token as easily as sending a text message, with zero friction and zero cognitive load.
-
-## Recent Changes
-
-### November 10, 2025 - Fixed Selector Extraction (NEEDS FUNDING)
-- **Final deployed contract**: 0xb47973f205121ad784d9414bbfeca86c8e270844
-  - Token: TALENT (0x9a33406165f562e16c3abd82fd1185482e01b49a)
-  - Fee: 3% (300 basis points)
-  - Minimum transfer: 5 TALENT tokens
-  - Deployment TX: 0xd986f898903bad0c8cf7e9ca3606bca6a3af465786b745b3eb8ecc514a91f785
-  - Block: 38003997
-  - Gas used: 1,451,010 (bytecode: 12,296 chars runtime)
-  - Deployed via raw CREATE transaction (bypassed factory routing)
-  - Compiled with solc 0.8.20 + viaIR:true for stack depth optimization
-  - **Runtime bytecode hash**: 0x5a015d9d6c058df153009d62ec238c841cf1a57c5cf2fd970cdc98cbc9315728
-- **⚠️ NOT FUNDED**: Deployer account out of ETH - needs 0.005 ETH deposit to EntryPoint before testing
-- **Fixed AA33 Error**: "First call must be transferFrom"
-  - **Problem**: Assembly selector extraction `shr(224, mload(...))` was failing
-  - **Solution**: Replaced with manual bit-shifting: `bytes4(uint32(uint8(call0[0])) << 24 | ...)`
-  - **Validates**: Both calls must have transferFrom selector (0x23b872dd)
-- **EIP-7562 Compliance** (CRITICAL FIX):
-  - **Removed external storage access**: Deleted balanceOf and allowance checks from validatePaymasterUserOp
-  - **Why**: Unstaked paymasters CANNOT access external contract storage during validation per EIP-7562 rule [STO-021]
-  - **Safety**: Execution will fail naturally if user has insufficient balance/allowance (no validation needed)
-- **Security Fix - transferFrom Selector Validation** (CRITICAL):
-  - **Added explicit selector checks**: Both batched calls MUST be transferFrom (0x23b872dd)
-  - **Prevents attack**: Without this, attackers could call arbitrary 3-parameter functions and bypass fee collection
-  - **Implementation**: Assembly code extracts first 4 bytes from each call and validates against 0x23b872dd
-- **Complete Validation Flow**:
-  1. paymasterAndData unpacking (148 bytes): address + postGas limits + context
-  2. executeBatch selector check (0x8d80ff0a)
-  3. Batch structure: exactly 2 calls to tokenAddress
-  4. **Both calls validated as transferFrom (0x23b872dd)** ✅
-  5. TransferFrom parameters decoded: (from, to, amount)
-  6. Fee calculation: (amount * feePct) / 10000
-  7. Context cross-validation (prevents tampering)
-  8. EOA ownership validation
-  9. Minimum transfer amount check
-- **Bytecode Verification**:
-  - ✅ Contains "Only executeBatch calls" revert string
-  - ✅ NO balanceOf/allowance checks (EIP-7562 compliant)
-  - ✅ Contains transferFrom selector validation (security fix)
-- **Database updated**: Replaced old pools with production-ready EIP-7562 compliant pool
-- **Event indexer**: Restarted to track new pool for deposits, withdrawals, and fee claims
-- **Architect verdict**: PASS - production-ready with no blocking issues
+Paymaster Market is a Web3 application leveraging ERC-4337 Account Abstraction to facilitate gasless token transfers. It functions as a decentralized marketplace where sponsors deposit ETH into token-specific pools, enabling users to send those tokens without paying gas fees. Users pay a small percentage fee in the token being sent, sponsors earn yield from their deposited tokens, and rebalancers can profit from arbitrage opportunities. The platform aims to provide a "Venmo-like" user experience for sending any token with zero friction.
 
 ## User Preferences
 
@@ -58,182 +12,52 @@ Preferred communication style: Simple, everyday language.
 
 ### Frontend Architecture
 
-**Technology Stack:**
-- React with TypeScript for type safety
-- Vite as the build tool and development server
-- Wouter for client-side routing (lightweight React Router alternative)
-- TanStack Query (React Query) for server state management and API caching
-- Tailwind CSS for styling with shadcn/ui component library
-- RainbowKit + Wagmi for Web3 wallet connection (Base mainnet)
-- Viem for Ethereum interactions and contract calls
+**Technology Stack:** React with TypeScript, Vite, Wouter, TanStack Query, Tailwind CSS (with shadcn/ui), RainbowKit, Wagmi, Viem.
 
-**Design Philosophy:**
-- Mobile-first approach (80% of transfers are mobile)
-- Reference-based design inspired by Uniswap's clarity, Rainbow Wallet's mobile design, and Aave's dashboard hierarchy
-- Typography: Inter font family for UI, JetBrains Mono for addresses and token amounts
-- Zero cognitive load: plain language over technical jargon
-- Scan-ability: quick parsing of pool data and opportunities
+**Design Philosophy:** Mobile-first, inspired by Uniswap, Rainbow Wallet, and Aave. Emphasizes Inter and JetBrains Mono typography, zero cognitive load, and scan-ability. Uses a WCAG AA Compliant semantic color system.
 
-**Semantic Color System (WCAG AA Compliant):**
-- Success (green) for positive states: discounts, profits, active pools
-  - Light mode: hsl(142, 71%, 28%) + white text (5.3:1 contrast)
-  - Dark mode: hsl(142, 70%, 50%) + dark green text (8.7:1 contrast)
-- Warning (orange) for attention states: low ETH alerts, caution indicators
-  - Light mode: hsl(38, 92%, 30%) + white text (5.4:1 contrast)
-  - Dark mode: hsl(38, 92%, 60%) + dark brown text (7.6:1 contrast)
-- All semantic colors registered in Tailwind config with border/foreground variants
-- Badge component provides success/warning/destructive variants (no manual hover overrides)
+**Component Structure:** Modular architecture with UI primitives and feature components. Includes a landing page, a tabbed main app (Pools, Sponsor Dashboard, Rebalancer Panel), and modal-based flows.
 
-**Component Structure:**
-- Modular component architecture with separation between UI primitives (`/components/ui`) and feature components
-- Landing page with value proposition, how-it-works, and CTA sections
-- Main app with tabbed interface for Pools, Sponsor Dashboard, and Rebalancer Panel
-- Modal-based flows for token sending and token acquisition
-- Reusable components: TokenIcon, DiscountBadge, StatCard
-
-**State Management:**
-- React Query for API data fetching and caching with infinite stale time
-- Local React state for UI interactions and form inputs
-- No global state management library (Redux/Zustand) - relies on React Query cache
-- 401 errors throw by default (authenticated endpoints)
+**State Management:** TanStack Query for API data fetching and caching; local React state for UI interactions. No global state management library.
 
 ### Backend Architecture
 
-**Technology Stack:**
-- Express.js server with TypeScript
-- RESTful API design pattern
-- Drizzle ORM for database operations
-- Session-based architecture (connect-pg-simple for session storage)
-- Viem public client for blockchain event indexing on Base mainnet
+**Technology Stack:** Express.js with TypeScript, RESTful API, Drizzle ORM, session-based architecture (connect-pg-simple), Viem for blockchain event indexing.
 
-**API Design:**
-- RESTful endpoints following resource-based patterns
-- `/api/pools` - GET all pools, POST create pool
-- `/api/pools/:id` - GET single pool, PATCH update pool
-- `/api/transactions` - Transaction operations
-- PATCH supports atomic increments for volume and fees to prevent race conditions
-- JSON request/response format with proper error handling
+**API Design:** RESTful endpoints for pools and transactions, supporting atomic operations and JSON format.
 
-**Server Configuration:**
-- Custom request logging middleware for API endpoints
-- Request body parsing with raw body preservation for webhook validation
-- CORS and security headers configured for production
-- Development mode includes Vite middleware integration and HMR support
+**Server Configuration:** Custom request logging, webhook validation, CORS, and security headers.
 
 ### Data Storage
 
-**Database:**
-- PostgreSQL via Neon serverless driver
-- Drizzle ORM with type-safe schema definitions
-- Schema-first approach with Zod validation
+**Database:** PostgreSQL (Neon serverless driver) with Drizzle ORM and Zod validation.
 
-**Schema Design:**
-- `pools` table: Tracks gas sponsorship pools with token info, ETH deposits, fees, volume, discount, APY, gas price metrics, and blockchain metadata (contractAddress, tokenAddress, sponsor, chainId, blockNumber, transactionHash)
-- `transactions` table: Records token transfers with from/to addresses, amounts, fees, pool references, and blockchain metadata (tokenSymbol, blockNumber, chainId, transactionHash)
-- UUID primary keys with server-generated defaults
-- Decimal precision for financial data (18 decimals for amounts, proper precision for percentages)
-- Timestamps for audit trails
-- Blockchain fields enable event indexing and verification
+**Schema Design:** Tables for `pools` (tracking gas sponsorship pools, token info, deposits, fees, volume, etc.) and `transactions` (recording token transfers). Uses UUID primary keys, decimal precision for financial data, and timestamps.
 
-**Data Layer Pattern:**
-- Storage abstraction layer (`IStorage` interface) for testability
-- `DatabaseStorage` implementation using Drizzle ORM
-- Direct database queries without additional caching layer
-- Delete methods (`deletePool`, `deleteTransaction`) for chain reorganization rollback
-- Seed data for development with mock pools (DOGGO, USDC, RARE) including Base mainnet metadata
-- Indexed query methods: `getPoolByContractAddress()`, `getPoolByTransactionHash()`, `getTransactionsByPoolId()`, `getTransactionByHash()` for O(1) or O(log n) lookups
-
-**Database Performance:**
-- 8 B-tree indexes for efficient querying:
-  - Pools: contractAddress, transactionHash, blockNumber, createdAt
-  - Transactions: poolId, transactionHash, blockNumber, timestamp
-- Address normalization: All addresses stored in lowercase for consistent equality matching
-- Indexer uses targeted queries instead of full table scans (14 optimizations across event handlers)
-- Reorg handling optimized with indexed lookups (pool deletion, balance recalculation)
+**Data Layer Pattern:** Storage abstraction layer (`IStorage` interface) with `DatabaseStorage` using Drizzle ORM. Optimized with 8 B-tree indexes for efficient querying and supports chain reorganization rollback.
 
 ### Blockchain Integration
 
-**Smart Contracts (Base Mainnet):**
-- PaymasterFactory: Deploys new PaymasterPool instances for specific tokens
-- PaymasterPool: Manages ETH deposits, fee collection, and paymaster validation logic
-- SimpleAccountFactory: Creates smart contract wallets for users (deployed at 0x9406Cc6185a346906296840746125a0E44976454)
-- SimpleAccount: ERC-4337 v0.7 smart account with executeBatch support
-- ABIs extracted from Solidity and stored in `client/src/contracts/` directory
-- Deployment scripts in `scripts/` directory with proper event signatures
-- Contract helpers in `client/src/lib/contracts.ts` with address validation guards
+**Smart Contracts (Base Mainnet):** PaymasterFactory (deploys PaymasterPools), PaymasterPool (manages deposits, fees, validation), SimpleAccountFactory, and SimpleAccount (ERC-4337 v0.7 smart account). ABIs are extracted and stored locally.
 
-**Gasless Transfer Architecture (EOA-based):**
-- **User Tokens Stay in EOA:** Tokens remain in user's externally owned account (MetaMask, etc.)
-- **Smart Account Proxy:** Each user has a SimpleAccount (ERC-4337) that acts on their behalf
-- **One-Time Approval:** User approves SimpleAccount to spend tokens (like approving Uniswap)
-- **Gasless Execution Flow:**
-  1. User signs UserOperation off-chain (free)
-  2. Bundler (Pimlico) executes UserOp on user's smart account
-  3. Smart account calls `executeBatch([token, token], [transferFrom(eoa→recipient, amount), transferFrom(eoa→paymaster, fee)])`
-  4. Paymaster validates: correct EOA, sufficient balance/allowance, proper fee calculation
-  5. Paymaster sponsors gas in ETH, collects fee in tokens
-  6. Transaction succeeds - recipient gets tokens, paymaster gets fee, user pays no gas
-- **Counterfactual Deployment:** Smart accounts deployed on first use via initCode (bundler handles deployment)
-- **Security:** PaymasterPool validates executeBatch selector, transferFrom selectors, token addresses, EOA ownership, balance, allowance, and fee calculation
+**Gasless Transfer Architecture:** Tokens remain in user's EOA. A SimpleAccount acts as a proxy, requiring a one-time approval. Gasless execution involves the user signing a UserOperation, a Bundler (Pimlico) executing it, the smart account calling `executeBatch` for token transfer and fee collection, and the Paymaster sponsoring gas after validation. Smart accounts are counterfactually deployed.
 
-**Event Indexer:**
-- Real-time blockchain event listener using Viem's `watchContractEvent`
-- Monitors PaymasterFactory for PoolCreated events (0x33363435...)
-- Monitors PaymasterPool instances for Deposited, Withdrawn, and FeesClaimed events
-- Syncs events to database with full blockchain metadata (blockNumber, chainId, transactionHash)
-- Chain reorganization handling: deletes affected records and recalculates aggregates with bigint precision
-- Watcher lifecycle management: separate factory watcher and pool watchers to prevent leaks
-- Bigint math throughout (parseEther/formatEther) to avoid floating-point precision errors
-- Indexer starts automatically on server launch if VITE_PAYMASTER_FACTORY_ADDRESS is set
+**Event Indexer:** Real-time listener using Viem to monitor `PoolCreated`, `Deposited`, `Withdrawn`, and `FeesClaimed` events. Syncs events to the database, handles chain reorganizations, and uses bigint math for precision.
 
-**Wallet Connection:**
-- RainbowKit integration for one-click wallet connection
-- Configured for Base mainnet (chainId 8453)
-- ConnectButton in app header with address display and network switcher
-- Wagmi hooks for reading contract state and sending transactions
-- Viem for low-level contract interactions and event parsing
+**Wallet Connection:** RainbowKit for one-click wallet connection on Base mainnet, using Wagmi hooks and Viem for interactions.
 
-### External Dependencies
+## External Dependencies
 
-**UI Component Library:**
-- Radix UI primitives for accessible, unstyled components (dialogs, dropdowns, tooltips, etc.)
-- Custom themed with Tailwind CSS via shadcn/ui configuration
-- Class Variance Authority (CVA) for component variant management
+**UI Component Library:** Radix UI primitives, themed with Tailwind CSS via shadcn/ui, using Class Variance Authority (CVA).
 
-**Database & ORM:**
-- Neon serverless PostgreSQL for production database hosting
-- Drizzle Kit for schema migrations and database management
-- Connect-pg-simple for PostgreSQL-backed session storage
+**Database & ORM:** Neon serverless PostgreSQL, Drizzle Kit for migrations, Connect-pg-simple for session storage.
 
-**Development Tools:**
-- Replit-specific plugins for development environment integration
-- Vite plugins for runtime error overlay, cartographer, and dev banner in Replit environment
-- ESBuild for server-side production builds
+**Development Tools:** Replit-specific plugins, Vite plugins, ESBuild.
 
-**Fonts:**
-- Google Fonts (Inter and JetBrains Mono) loaded via CDN
-- Self-hosted fallback to system fonts
+**Fonts:** Google Fonts (Inter and JetBrains Mono) via CDN.
 
-**Build & Deployment:**
-- Environment-based configuration (NODE_ENV)
-- Separate build outputs: client to `dist/public`, server to `dist`
-- Path aliases for clean imports (`@/`, `@shared/`, `@assets/`)
+**Build & Deployment:** Environment-based configuration, separate build outputs for client and server, path aliases.
 
-**Quality Assurance:**
-- TypeScript strict mode for type safety
-- Test IDs embedded in components for E2E testing support
-- Incremental TypeScript compilation with build info caching
+**Quality Assurance:** TypeScript strict mode, test IDs for E2E testing, incremental TypeScript compilation.
 
-**Accessibility Features:**
-- All icon-only buttons have accessible labels (aria-label or sr-only text)
-  - Theme toggle: Dynamic aria-label based on current state
-  - Carousel navigation: sr-only text for Previous/Next slides
-  - Sidebar trigger: sr-only text for Toggle Sidebar
-- Focus-visible states on all interactive elements (buttons, inputs, selects)
-  - Buttons: focus-visible:ring-1 with theme-aware ring color
-  - Inputs/selects: focus-visible:ring-2 with ring offset
-- Keyboard navigation fully supported
-  - ESC closes all Dialog/Modal components (Radix UI primitive)
-  - Tab/Shift+Tab navigate through interactive elements
-  - Arrow keys work in Select dropdowns (Radix UI primitive)
-  - Focus trap within modals with proper focus return
+**Accessibility Features:** Accessible labels for buttons, focus-visible states, keyboard navigation support (ESC, Tab/Shift+Tab, Arrow keys), and focus trap within modals.
