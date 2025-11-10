@@ -6,6 +6,19 @@ Paymaster Market is a Web3 application that enables gasless token transfers usin
 
 The application follows a "Venmo-like" user experience philosophy: send any token as easily as sending a text message, with zero friction and zero cognitive load.
 
+## Recent Changes
+
+### November 10, 2025 - PaymasterPool Redeployment
+- **Fixed TALENT token address mismatch**: Previous deployment used incorrect token address
+- **Deployed new PaymasterPool**: 0xa7c6359200fa376c233a454de456291357d5ed18
+  - Correct TALENT token: 0x9a33406165f562e16c3abd82fd1185482e01b49a
+  - Fee: 0.5% (50 basis points)
+  - Minimum transfer: 1 TALENT token
+  - Deployment TX: 0x84ea6f8b9cce6000460df5476cea23858fd1801bbb232afaebc96ae622c25728
+- **Funded with 0.001 ETH**: TX 0x3bfdcaa397c9a9964082b4ee5b265748e13023ebe7eb88ef4691849fa45756ce
+- **Database updated**: Pool contract_address updated to new deployment
+- **Event indexer**: Automatically tracking new contract for deposits, withdrawals, and fee claims
+
 ## User Preferences
 
 Preferred communication style: Simple, everyday language.
