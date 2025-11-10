@@ -155,6 +155,35 @@ contract PaymasterPool {
     ) external returns (bytes memory context, uint256 validationData) {
         require(msg.sender == entryPoint, "Only EntryPoint");
         
+        // Unpack and validate paymasterAndData
+        // Format: paymaster address (20B) + postGas (32B) + context (96B: address + uint256 + uint256)
+        bytes calldata paymasterAndData = userOp.paymasterAndData;
+        require(paymasterAndData.length >= 148, "paymasterAndData too short"); // 20 + 32 + 96
+        
+        // Extract paymaster address from first 20 bytes
+        address paymasterAddress;
+        assembly {
+            paymasterAddress := shr(96, calldataload(paymasterAndData.offset))
+        }
+        require(paymasterAddress == address(this), "Wrong paymaster address");
+        
+        // Extract postGas packed values (32 bytes starting at offset 20)
+        bytes32 postGasPacked;
+        assembly {
+            postGasPacked := calldataload(add(paymasterAndData.offset, 20))
+        }
+        uint128 postVerificationGasLimit = uint128(uint256(postGasPacked) >> 128);
+        uint128 postOpGasLimit = uint128(uint256(postGasPacked));
+        require(postVerificationGasLimit >= 50000, "postVerificationGas too low");
+        require(postOpGasLimit >= 100000, "postOpGas too low");
+        
+        // Extract context data (96 bytes starting at offset 52)
+        // Context format: recipient address (32B padded) + amount (32B) + fee (32B)
+        (address contextRecipient, uint256 contextAmount, uint256 contextFee) = abi.decode(
+            paymasterAndData[52:],
+            (address, uint256, uint256)
+        );
+        
         // Get the EOA owner of the smart account (handles both deployed and undeployed accounts)
         address eoa = getAccountOwner(userOp.sender, userOp.initCode);
         
@@ -226,6 +255,11 @@ contract PaymasterPool {
         uint256 expectedFee = (amount0 * feePct) / 10000;
         require(fee == expectedFee, "Incorrect fee amount");
         require(fee > 0, "Fee too small");
+        
+        // Verify context matches executeBatch data
+        require(contextRecipient == to0, "Context recipient mismatch");
+        require(contextAmount == amount0, "Context amount mismatch");
+        require(contextFee == fee, "Context fee mismatch");
         
         // Verify EOA has sufficient token balance (amount + fee)
         uint256 requiredBalance = amount0 + fee;
