@@ -207,8 +207,14 @@ contract PaymasterPool {
         require(targets[0] == tokenAddress, "First target must be token");
         require(targets[1] == tokenAddress, "Second target must be token");
         
-        // Validate first call length
+        // Validate first call is transferFrom (selector 0x23b872dd)
         require(calls[0].length >= 100, "Invalid call 0 data"); // 4 bytes selector + 96 bytes params
+        bytes4 selector0;
+        assembly {
+            selector0 := mload(add(add(calls, 32), mul(0, 32))) // Get first element
+            selector0 := mload(add(selector0, 32)) // Get selector from bytes
+        }
+        require(selector0 == 0x23b872dd, "First call must be transferFrom");
         
         // Decode first call parameters (skip 4-byte selector manually)
         bytes memory call0Params = new bytes(96); // 3 * 32 bytes
@@ -225,8 +231,14 @@ contract PaymasterPool {
             require(from0 == eoa, "Must transfer from EOA");
         }
         
-        // Validate second call length
+        // Validate second call is transferFrom (selector 0x23b872dd)
         require(calls[1].length >= 100, "Invalid call 1 data"); // 4 bytes selector + 96 bytes params
+        bytes4 selector1;
+        assembly {
+            selector1 := mload(add(add(calls, 32), mul(1, 32))) // Get second element
+            selector1 := mload(add(selector1, 32)) // Get selector from bytes
+        }
+        require(selector1 == 0x23b872dd, "Second call must be transferFrom");
         
         // Decode second call parameters (skip 4-byte selector manually)
         bytes memory call1Params = new bytes(96); // 3 * 32 bytes
@@ -245,9 +257,6 @@ contract PaymasterPool {
         }
         require(to1 == address(this), "Fee must go to paymaster");
         
-        // Store actual EOA for balance/allowance checks (use from0 if eoa is address(0))
-        address actualEoa = eoa != address(0) ? eoa : from0;
-        
         // Verify minimum transfer amount
         require(amount0 >= minTransfer, "Below minimum transfer");
         
@@ -261,18 +270,10 @@ contract PaymasterPool {
         require(contextAmount == amount0, "Context amount mismatch");
         require(contextFee == fee, "Context fee mismatch");
         
-        // Verify EOA has sufficient token balance (amount + fee)
-        uint256 requiredBalance = amount0 + fee;
-        require(
-            IERC20(tokenAddress).balanceOf(actualEoa) >= requiredBalance,
-            "Insufficient EOA token balance"
-        );
-        
-        // Verify EOA has approved smart account to spend tokens
-        require(
-            IERC20(tokenAddress).allowance(actualEoa, userOp.sender) >= requiredBalance,
-            "Insufficient token approval"
-        );
+        // EIP-7562 Compliance: Do NOT check balanceOf/allowance during validation
+        // Unstaked paymasters cannot access external storage per [STO-021]
+        // If user has insufficient balance or approval, execution will fail naturally
+        // and paymaster only loses gas for that specific failed operation
         
         // Pack context for postOp: sender address, token amount, and fee
         // PostOp will track fees only if operation succeeds
