@@ -398,7 +398,7 @@ export default function SendTokenModal({ preselectedToken, triggerButton }: Send
           </Button>
         )}
       </DialogTrigger>
-      <DialogContent className="sm:max-w-md" data-testid="modal-send-token">
+      <DialogContent className="sm:max-w-md max-h-[85vh] flex flex-col" data-testid="modal-send-token">
         <DialogHeader>
           <DialogTitle>Send Token</DialogTitle>
           <DialogDescription>
@@ -406,10 +406,10 @@ export default function SendTokenModal({ preselectedToken, triggerButton }: Send
           </DialogDescription>
         </DialogHeader>
         
-        <div className="space-y-4">
+        <div className="space-y-3 overflow-y-auto pr-1">
           {/* Smart Wallet Status Banner */}
           {isConnected && walletType === 'eoa' && (
-            <div className="rounded-lg border bg-muted/30 p-3" data-testid="banner-smart-wallet-status">
+            <div className="rounded-lg border bg-muted/30 p-2.5" data-testid="banner-smart-wallet-status">
               <div className="flex items-start gap-3">
                 {isLoadingWalletStatus ? (
                   <Loader2 className="h-5 w-5 text-muted-foreground animate-spin mt-0.5" />
@@ -451,7 +451,7 @@ export default function SendTokenModal({ preselectedToken, triggerButton }: Send
           )}
 
           {isConnected && walletType === 'smart-contract' && (
-            <div className="rounded-lg border bg-success/10 border-success/20 p-3" data-testid="banner-smart-contract-wallet">
+            <div className="rounded-lg border bg-success/10 border-success/20 p-2.5" data-testid="banner-smart-contract-wallet">
               <div className="flex items-start gap-3">
                 <CheckCircle2 className="h-5 w-5 text-success mt-0.5" />
                 <div className="flex-1 space-y-1">
@@ -471,7 +471,7 @@ export default function SendTokenModal({ preselectedToken, triggerButton }: Send
               placeholder="0x1234...abcd or ENS name"
               value={recipient}
               onChange={(e) => setRecipient(e.target.value)}
-              className="h-12"
+              className="h-10"
               disabled={sendTokenMutation.isPending}
               data-testid="input-recipient"
             />
@@ -480,7 +480,7 @@ export default function SendTokenModal({ preselectedToken, triggerButton }: Send
           <div className="space-y-2">
             <Label htmlFor="token">Token</Label>
             <Select value={selectedToken} onValueChange={setSelectedToken} disabled={sendTokenMutation.isPending}>
-              <SelectTrigger id="token" className="h-12" data-testid="select-token">
+              <SelectTrigger id="token" className="h-10" data-testid="select-token">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -504,13 +504,13 @@ export default function SendTokenModal({ preselectedToken, triggerButton }: Send
               placeholder="0.00"
               value={amount}
               onChange={(e) => setAmount(e.target.value)}
-              className="font-mono text-lg h-12"
+              className="font-mono h-10"
               disabled={sendTokenMutation.isPending}
               data-testid="input-amount"
             />
           </div>
 
-          <div className="rounded-lg border bg-muted/50 p-4 space-y-3">
+          <div className="rounded-lg border bg-muted/50 p-3 space-y-2">
             <div className="flex items-center gap-2">
               <Zap className="h-4 w-4 text-primary" />
               <span className="text-sm font-medium">Gas Paid by {selectedToken} Pool</span>
@@ -523,28 +523,27 @@ export default function SendTokenModal({ preselectedToken, triggerButton }: Send
               </div>
               <div className="flex justify-between font-semibold">
                 <span>You send</span>
-                <span className="font-mono text-lg">{youSend} {selectedToken}</span>
+                <span className="font-mono">{youSend} {selectedToken}</span>
               </div>
             </div>
           </div>
 
           {needsApproval ? (
-            <div className="space-y-3">
-              <div className="rounded-lg border border-warning/20 bg-warning/10 p-3">
+            <div className="space-y-2.5">
+              <div className="rounded-lg border border-warning/20 bg-warning/10 p-2.5">
                 <div className="flex items-start gap-2">
                   <Info className="h-4 w-4 text-warning mt-0.5" />
-                  <div className="space-y-1">
+                  <div className="space-y-0.5">
                     <p className="text-sm font-medium text-warning-foreground">Approval Required</p>
                     <p className="text-xs text-muted-foreground">
-                      First-time setup: Approve your smart account to spend {selectedToken}. This is a one-time transaction.
+                      Approve your smart account to spend {selectedToken} (one-time setup)
                     </p>
                   </div>
                 </div>
               </div>
               <Button
                 onClick={handleApprove}
-                className="w-full h-12"
-                size="lg"
+                className="w-full h-10"
                 disabled={isApprovePending || isApprovalConfirming}
                 data-testid="button-approve-tokens"
               >
@@ -564,8 +563,7 @@ export default function SendTokenModal({ preselectedToken, triggerButton }: Send
           ) : (
             <Button
               onClick={handleSend}
-              className="w-full h-12"
-              size="lg"
+              className="w-full h-10"
               disabled={!amount || !recipient || sendTokenMutation.isPending}
               data-testid="button-confirm-send"
             >
