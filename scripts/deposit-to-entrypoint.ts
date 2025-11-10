@@ -2,9 +2,9 @@ import { createWalletClient, createPublicClient, http, parseEther } from 'viem';
 import { base } from 'viem/chains';
 import { privateKeyToAccount } from 'viem/accounts';
 
-const POOL_ADDRESS = '0xf448cc02fb157ee2f05e187cb05f3d5fa08f5c98'; // Final PaymasterPool with paymasterAndData validation
+const POOL_ADDRESS = '0xd854ce29e07381bfd9459a370830c93dbe7256ff'; // Final PaymasterPool with paymasterAndData validation
 const ENTRYPOINT_ADDRESS = '0x5FF137D4b0FDCD49DcA30c7CF57E578a026d2789';
-const DEPOSIT_AMOUNT = parseEther('0.005'); // 0.005 ETH for production gas costs
+const DEPOSIT_AMOUNT = parseEther('0.0005'); // 0.0005 ETH for testing
 const RPC_URL = process.env.VITE_BASE_RPC_URL || 'https://mainnet.base.org';
 
 const privateKey = process.env.DEPLOYER_PRIVATE_KEY;
@@ -41,7 +41,7 @@ async function main() {
   console.log('======================================\n');
   console.log(`📍 EntryPoint: ${ENTRYPOINT_ADDRESS}`);
   console.log(`📍 For Pool: ${POOL_ADDRESS}`);
-  console.log(`💸 Amount: ${DEPOSIT_AMOUNT.toString()} wei (0.001 ETH)\n`);
+  console.log(`💸 Amount: ${DEPOSIT_AMOUNT.toString()} wei (0.0005 ETH)\n`);
 
   const hash = await walletClient.writeContract({
     address: ENTRYPOINT_ADDRESS as `0x${string}`,
@@ -57,7 +57,7 @@ async function main() {
   const receipt = await publicClient.waitForTransactionReceipt({ hash });
 
   if (receipt.status === 'success') {
-    console.log('✅ Deposited 0.001 ETH directly to EntryPoint for pool!');
+    console.log('✅ Deposited 0.0005 ETH directly to EntryPoint for pool!');
     console.log('💡 Pool can now sponsor gasless transactions');
     console.log(`🔗 BaseScan: https://basescan.org/tx/${hash}`);
   } else {
