@@ -620,7 +620,12 @@ export default function SponsorDashboard() {
             </div>
             <div className="flex gap-2">
               <SponsorDepositModal />
-              <Dialog open={createOpen} onOpenChange={setCreateOpen}>
+              <Dialog open={createOpen} onOpenChange={(open) => {
+                setCreateOpen(open);
+                if (open) {
+                  resetCreateForm(); // Reset form when opening modal
+                }
+              }}>
                 <DialogTrigger asChild>
                   <Button className="gap-2" data-testid="button-create-pool">
                     <Plus className="h-4 w-4" />
@@ -696,13 +701,28 @@ export default function SponsorDashboard() {
                         Smallest amount users can send in a single transaction
                       </p>
                     </div>
+                    {tokenSymbol && feePercentage && minTokens && (
+                      <div className="rounded-md bg-muted p-3 space-y-1">
+                        <p className="text-xs font-medium">Preview:</p>
+                        <p className="text-xs text-muted-foreground">
+                          Fee: {feePercentage}% ({Math.floor(parseFloat(feePercentage) * 100)} basis points)
+                        </p>
+                        <p className="text-xs text-muted-foreground">
+                          Min transfer: {minTokens} {tokenSymbol}
+                        </p>
+                      </div>
+                    )}
                     <Button
                       onClick={handleCreatePool}
                       className="w-full"
-                      disabled={isCreatingPool || isTxPending || isConfirming}
+                      disabled={isCreatingPool || isTxPending || isConfirming || !tokenSymbol || isFetchingMetadata}
                       data-testid="button-confirm-create"
                     >
-                      {isTxPending 
+                      {isFetchingMetadata
+                        ? "Fetching Token Info..."
+                        : !tokenSymbol
+                        ? "Enter Token Address"
+                        : isTxPending 
                         ? "Approve in Wallet..." 
                         : isConfirming 
                         ? "Confirming..." 
