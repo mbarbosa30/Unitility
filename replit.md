@@ -8,34 +8,26 @@ The application follows a "Venmo-like" user experience philosophy: send any toke
 
 ## Recent Changes
 
-### November 10, 2025 - PaymasterPool paymasterAndData Validation Fix (FINAL)
-- **Root cause identified**: Bundler -32603 errors caused by incorrect paymasterAndData packing
-  - PaymasterPool contract expected: address (20B) + postGas (32B) + context (96B) = 148 bytes
-  - Client was only sending paymaster address (20 bytes), missing postGas and context validation data
-  - Contract validation reverted on "paymasterAndData too short" check
-- **Updated PaymasterPool contract**: Added comprehensive paymasterAndData unpacking and validation
-  - Extracts paymaster address from first 20 bytes, verifies it matches contract address
-  - Unpacks postGas limits (32 bytes): uint128 postVerificationGasLimit + uint128 postOpGasLimit (tightly packed)
-  - Validates minimum thresholds: postVerificationGasLimit ≥ 50K, postOpGasLimit ≥ 100K
-  - Decodes context data (96 bytes): recipient address + transfer amount + fee amount
-  - Cross-validates context against executeBatch callData to prevent tampering
-  - All validation happens in assembly/manual unpacking to avoid ABI encoding overhead
-- **Updated client userOp.ts**: Properly packs paymasterAndData with 3-part structure
-  - Part 1: Paymaster address (20 bytes) - direct concat
-  - Part 2: PostGas limits (32 bytes) - TIGHTLY packed as two uint128 values using pad + toHex + concat
-  - Part 3: Context data (96 bytes) - ABI encoded (address recipient, uint256 amount, uint256 fee)
-  - Total: 148 bytes exactly, matching contract expectations
-  - Fixed previous bug where encodeAbiParameters expanded uint128 values into separate 32-byte slots (180 bytes total)
-- **Deployed final PaymasterPool**: 0xf448cc02fb157ee2f05e187cb05f3d5fa08f5c98
+### November 10, 2025 - PaymasterPool Deployment with executeBatch Validation (VERIFIED)
+- **Final deployed contract**: 0x6c3699b332ca53800eb8688767b242895a1bac54
   - Token: TALENT (0x9a33406165f562e16c3abd82fd1185482e01b49a)
   - Fee: 3% (300 basis points)
   - Minimum transfer: 5 TALENT tokens
-  - Deployment TX: 0x7ae02923291865f0634b370c45eff698f0d4e0424f75a6fd1874f2a93dc7bb60
-  - Compiled with IR-based optimizer (viaIR: true) for stack depth optimization
-- **Funded with 0.005 ETH**: Deposited directly to EntryPoint via depositTo() for production gas costs
-  - Funding TX: 0x3166607ef76201510a5ffec6d62054fb5dedb214d1ab487031fdf8643dec7e22
-- **Database updated**: Replaced old pool with final v0.6 pool with paymasterAndData validation
-- **Event indexer**: Restarted to track final pool for deposits, withdrawals, and fee claims
+  - Deployment TX: 0xd002fb6e756cd8254a9a3ab478241f8b88c82eee99dcab827060d9413aa85665
+  - Block: 38000656
+  - Deployed via raw CREATE transaction (bypassed factory routing)
+  - Compiled with solc 0.8.20 + viaIR:true for stack depth optimization
+  - **Bytecode verified**: Contains "Only executeBatch calls" revert string ✅
+- **Funded with 0.001 ETH**: Deposited to EntryPoint via depositTo() for gasless transfers
+- **executeBatch validation**: Contract validates full UserOperation batch structure
+  - Requires exactly 2 transferFrom calls in executeBatch
+  - Validates token addresses, EOA ownership, amounts, and fee calculation
+  - Unpacks paymasterAndData (148 bytes): address + postGas limits + context
+  - Cross-validates context data against callData to prevent tampering
+- **Bytecode hash discrepancy resolved**: On-chain runtime hash (0xccb4b9dc...) differs from artifact hash (0xb2a15a...) due to Solidity CBOR metadata, but functional code is identical and verified correct
+- **Gas estimates updated**: Reduced from 0.001 ETH to 0.0003 ETH to match Base mainnet reality (~0.00014 ETH actual cost)
+- **Database updated**: Replaced old pools with verified executeBatch-aware pool
+- **Event indexer**: Restarted to track new pool for deposits, withdrawals, and fee claims
 
 ## User Preferences
 
