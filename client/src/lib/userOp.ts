@@ -6,7 +6,9 @@ import {
   keccak256,
   encodeAbiParameters,
   parseAbiParameters,
-  toHex 
+  toHex,
+  concat,
+  pad 
 } from 'viem';
 import { base } from 'viem/chains';
 
@@ -152,8 +154,32 @@ export function buildUserOp(params: BuildUserOpParams): Omit<UserOperation, 'sig
     ],
   });
   
-  // Step 5: For v0.6, paymasterAndData is just the paymaster address (no gas limits embedded)
-  const paymasterAndData = paymasterAddress as Hex;
+  // Step 5: Pack paymasterAndData with validation structure
+  // Format: paymaster address (20B) + postGas (32B) + context (96B) = 148 bytes
+  // postGas: uint128 postVerificationGasLimit + uint128 postOpGasLimit (tightly packed in 32 bytes)
+  // context: abi.encode(address recipient, uint256 amount, uint256 fee)
+  
+  const postVerificationGasLimit = BigInt(60000); // Post-verification gas limit
+  const postOpGasLimit = BigInt(150000); // Post-op gas limit
+  
+  // Pack postGas as two uint128 values tightly in 32 bytes (NOT ABI encoded)
+  // Upper 16 bytes: postVerificationGasLimit, Lower 16 bytes: postOpGasLimit
+  const postVerifHex = pad(toHex(postVerificationGasLimit), { size: 16 });
+  const postOpHex = pad(toHex(postOpGasLimit), { size: 16 });
+  const postGasPacked = concat([postVerifHex, postOpHex]);
+  
+  // Encode context: recipient, amount, fee (96 bytes total: 32B + 32B + 32B)
+  const contextData = encodeAbiParameters(
+    parseAbiParameters('address, uint256, uint256'),
+    [recipientAddress, amount, tokenFee]
+  );
+  
+  // Concatenate all parts: address (20B) + postGas (32B) + context (96B) = 148 bytes
+  const paymasterAndData = concat([
+    paymasterAddress,
+    postGasPacked,
+    contextData
+  ]) as Hex;
   
   return {
     sender: account,
