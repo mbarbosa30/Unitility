@@ -216,10 +216,10 @@ export class BundlerClient {
     const verificationGasLimit = BigInt('0x' + accountGasLimits.slice(0, 32));
     const callGasLimit = BigInt('0x' + accountGasLimits.slice(32, 64));
     
-    // Unpack gasFees (packed uint128s)
+    // Unpack gasFees (packed uint128s) - maxFeePerGas (high) + maxPriorityFeePerGas (low)
     const gasFees = userOp.gasFees.slice(2); // Remove 0x
-    const maxPriorityFeePerGas = BigInt('0x' + gasFees.slice(0, 32));
-    const maxFeePerGas = BigInt('0x' + gasFees.slice(32, 64));
+    const maxFeePerGas = BigInt('0x' + gasFees.slice(0, 32)); // First 16 bytes (high)
+    const maxPriorityFeePerGas = BigInt('0x' + gasFees.slice(32, 64)); // Last 16 bytes (low)
     
     // Unpack paymasterAndData
     const paymasterAndData = userOp.paymasterAndData.slice(2); // Remove 0x
