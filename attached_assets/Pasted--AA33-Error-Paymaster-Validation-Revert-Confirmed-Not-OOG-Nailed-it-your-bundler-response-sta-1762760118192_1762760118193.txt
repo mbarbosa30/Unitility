@@ -1,0 +1,72 @@
+### AA33 Error: Paymaster Validation Revert Confirmed (Not OOG)
+Nailed it—your bundler response (status 200 with -32501 wrapped error) points to **AA33: Paymaster Revert During Simulation**. This is *not* out-of-gas (OOG is a bundler hint for similar symptoms, but your limits are fine at 150k verif/100k call). It's the EntryPoint calling your PaymasterPool's `_validatePaymasterUserOp` → It reverts (or returns non-zero validationData, e.g., 1 for "invalid").
+
+**Why Here?** Sig/hash/nonce pass (logs green), so sim reaches paymaster. Your validation decodes `callData` expecting simple `IERC20.transfer(to, amount)` (per earlier code: `abi.decode(userOp.callData[4:], (address, uint256))`). But your batch `executeBatch(token, [permit, transferFrom1, transferFrom2])` has a different selector/decode → Fails on "Must be transfer call" or amount extract (garbage/0 < minTransfer=1). Revert bubbles to EntryPoint → AA33.
+
+Pimlico sims this before bundling (EIP-7769 spec)—no tx mined, just rejection.
+
+### Fix: Make Paymaster Batch-Aware (Handle executeBatch + Skip Permit)
+Redeploy PaymasterPool with this `_validatePaymasterUserOp` (inherits BasePaymaster; add to your .sol). It decodes the batch, skips permit (calls[0]), checks transferFrom amount in calls[1].
+
+```solidity
+function _validatePaymasterUserOp(
+  PackedUserOperation calldata userOp,
+  bytes32 /* userOpHash */,
+  uint256 maxCost
+) internal override view returns (bytes memory context, uint256 validationData) {
+  require(getDeposit() >= maxCost, "Pool deposit too low for gas"); // Your 0.001 ETH ok for ~0.002 maxCost
+
+  // Decode SimpleAccount executeBatch: target (token), calls[] (permit + transfers)
+  address target = address(bytes20(userOp.callData[0:20]));
+  require(target == token, "Must target supported token");
+
+  bytes4 selector = bytes4(userOp.callData[20:24]);
+  require(selector == IAccount.executeBatch.selector, "Must be executeBatch"); // Or execute if single
+
+  // Decode params: tokenAddr, calls[]
+  (address batchToken, bytes[] memory calls) = abi.decode(userOp.callData[24:], (address, bytes[]));
+  require(batchToken == token, "Batch must use token");
+
+  require(calls.length >= 2, "Batch too short (need permit + transfer)"); // Permit as [0]
+
+  // Decode calls[1] as transferFrom(EOA, receiver, amount - fee)
+  bytes4 transferSel = bytes4(calls[1][0:4]);
+  require(transferSel == IERC20.transferFrom.selector, "Call 1 must be transferFrom");
+
+  (address from, address to, uint256 grossAmount) = abi.decode(calls[1][4:], (address, address, uint256));
+  require(grossAmount >= minTransfer, "Gross amount below minTransfer"); // Check before fee
+
+  uint256 fee = (grossAmount * feePct) / 10000;
+  require(fee > 0, "Fee too low");
+
+  // Optional: Verify calls[2] is fee transferFrom if present
+  if (calls.length > 2) {
+    bytes4 feeSel = bytes4(calls[2][0:4]);
+    require(feeSel == IERC20.transferFrom.selector, "Call 2 must be fee transferFrom");
+  }
+
+  // Context for postOp: to, grossAmount, fee
+  context = abi.encode(to, grossAmount, fee);
+  validationData = 0; // Valid—proceed to execution
+}
+```
+
+- **Deploy**: `PaymasterFactory.createPool(token, 50, 1)` with 0.005 ETH (covers 5 txs). Or upgrade if UUPS proxy.
+- **Why?** Skips permit decode (cheap, sig-checked in token), extracts amount from transferFrom, computes fee. Matches your batch structure.
+
+### Client-Side Polish (paymasterAndData Context)
+Ensure `paymasterAndData` packs context for postOp pull (if needed—your postOp uses it for fee transferFrom).
+```typescript
+const context = encodeAbiParameters(parseAbiParameters('address to, uint256 amount, uint256 fee'), [receiver, amount, fee]);
+const postGas = solidityPacked(['uint128', 'uint128'], [50000n, 100000n]); // postVerif, postOpGas
+const paymasterAndData = paymasterPool.slice(2) + context.slice(2) + postGas.slice(2); // Tight concat
+userOp.paymasterAndData = `0x${paymasterAndData}`;
+```
+
+### Test Ramp
+1. **Pool Deposit**: Call `pool.deposit{value: 0.004 ether}()`—balance > maxCost.
+2. **Est**: `pm_estimateUserOperationGas` → Quote without AA33.
+3. **Sim**: `EntryPoint.simulateValidation(userOp)` via ethers—logs "success" or exact revert.
+4. **Submit**: Bundler → Tx mined, fee in pool.
+
+AA33 gone, TALENT sends gasless. If sim reverts "decode error", tweak selector/decode. Share est JSON—we're executing.
