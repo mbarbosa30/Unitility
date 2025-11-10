@@ -92,6 +92,26 @@ export async function registerRoutes(app: Express): Promise<Server> {
     res.status(201).json(transaction);
   });
 
+  // ==================== ANALYTICS ENDPOINTS ====================
+
+  /**
+   * Get real-time analytics for tokens based on actual transaction data
+   * Returns ETH burned, tokens accrued, implied price, and intended FDV
+   * Can filter by token symbol or return all tokens
+   */
+  app.get("/api/analytics/tokens", async (req, res) => {
+    const { symbol } = req.query;
+    const tokenSymbol = symbol ? (symbol as string).toUpperCase() : undefined;
+    
+    try {
+      const analytics = await storage.getTokenAnalytics(tokenSymbol);
+      res.json(analytics);
+    } catch (error) {
+      console.error('Error fetching token analytics:', error);
+      res.status(500).json({ error: 'Failed to fetch token analytics' });
+    }
+  });
+
   // ==================== ECONOMIC ORACLE ENDPOINTS ====================
 
   /**

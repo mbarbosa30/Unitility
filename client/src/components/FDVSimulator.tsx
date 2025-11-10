@@ -55,10 +55,10 @@ export default function FDVSimulator() {
         <div className="mx-auto max-w-4xl space-y-12">
           <div className="text-center space-y-4">
             <h2 className="text-3xl md:text-4xl lg:text-5xl font-extrabold tracking-tight">
-              Watch <span className="text-primary">Usage Price the Token</span>
+              The Economic Oracle: <span className="text-primary">Usage Reveals Value</span>
             </h2>
             <p className="text-lg md:text-xl text-muted-foreground max-w-2xl mx-auto">
-              Interactive FDV Simulator
+              Every gasless transfer burns ETH and earns tokens. The ratio reveals intended FDV.
             </p>
           </div>
 

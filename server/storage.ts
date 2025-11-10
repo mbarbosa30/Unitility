@@ -1,6 +1,17 @@
 import { type Pool, type InsertPool, type Transaction, type InsertTransaction, pools, transactions } from "@shared/schema";
 import { db } from "./db";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
+
+export interface TokenAnalytics {
+  tokenSymbol: string;
+  totalEthBurned: string; // Total ETH spent on gas for all transfers
+  totalTokensAccrued: string; // Total tokens earned as fees by sponsors
+  totalTransfers: number;
+  avgTransferAmount: string;
+  avgFeePercentage: string; // Weighted average fee across all pools
+  impliedPriceInETH: string; // ETH burned / tokens accrued
+  intendedFDV: string | null; // implied price × total supply (if available)
+}
 
 export interface IStorage {
   // Pool operations
@@ -19,6 +30,9 @@ export interface IStorage {
   getTransactionByHash(transactionHash: string): Promise<Transaction | undefined>;
   createTransaction(transaction: InsertTransaction): Promise<Transaction>;
   deleteTransaction(id: string): Promise<void>;
+  
+  // Analytics operations
+  getTokenAnalytics(tokenSymbol?: string): Promise<TokenAnalytics[]>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -84,6 +98,85 @@ export class DatabaseStorage implements IStorage {
 
   async deleteTransaction(id: string): Promise<void> {
     await db.delete(transactions).where(eq(transactions.id, id));
+  }
+
+  async getTokenAnalytics(tokenSymbol?: string): Promise<TokenAnalytics[]> {
+    // Build query to calculate analytics per token
+    // Cast decimal columns to numeric for aggregation operations
+    const query = db
+      .select({
+        tokenSymbol: transactions.tokenSymbol,
+        totalEthBurned: sql<string>`COALESCE(SUM(CAST(${transactions.gasCost} AS NUMERIC)), 0)::text`.as('total_eth_burned'),
+        totalTokensAccrued: sql<string>`COALESCE(SUM(CAST(${transactions.fee} AS NUMERIC)), 0)::text`.as('total_tokens_accrued'),
+        totalTransfers: sql<number>`COUNT(*)`.as('total_transfers'),
+        avgTransferAmount: sql<string>`COALESCE(AVG(CAST(${transactions.amount} AS NUMERIC)), 0)::text`.as('avg_transfer_amount'),
+      })
+      .from(transactions)
+      .groupBy(transactions.tokenSymbol);
+
+    // Filter by token symbol if provided
+    const results = tokenSymbol 
+      ? await query.where(eq(transactions.tokenSymbol, tokenSymbol))
+      : await query;
+
+    // Calculate derived metrics and get pool data for each token
+    const analytics: TokenAnalytics[] = await Promise.all(
+      results.map(async (row) => {
+        // Get all pools for this token to calculate weighted average fee and total supply
+        const tokenPools = await db
+          .select()
+          .from(pools)
+          .where(eq(pools.tokenSymbol, row.tokenSymbol));
+
+        // Calculate weighted average fee (weight by volume)
+        let totalVolume = 0;
+        let weightedFeeSum = 0;
+        let totalSupply: string | null = null;
+
+        for (const pool of tokenPools) {
+          const volume = parseFloat(pool.volume);
+          const fee = parseFloat(pool.feePercentage);
+          totalVolume += volume;
+          weightedFeeSum += volume * fee;
+          
+          // Use first non-null total supply
+          if (!totalSupply && pool.totalSupply) {
+            totalSupply = pool.totalSupply;
+          }
+        }
+
+        const avgFeePercentage = totalVolume > 0 
+          ? (weightedFeeSum / totalVolume).toFixed(4)
+          : "0";
+
+        // Calculate implied price: ETH burned / tokens accrued
+        const ethBurned = parseFloat(row.totalEthBurned);
+        const tokensAccrued = parseFloat(row.totalTokensAccrued);
+        const impliedPriceInETH = tokensAccrued > 0
+          ? (ethBurned / tokensAccrued).toFixed(12)
+          : "0";
+
+        // Calculate intended FDV if total supply is available
+        let intendedFDV: string | null = null;
+        if (totalSupply && parseFloat(impliedPriceInETH) > 0) {
+          const fdv = parseFloat(impliedPriceInETH) * parseFloat(totalSupply);
+          intendedFDV = fdv.toFixed(6);
+        }
+
+        return {
+          tokenSymbol: row.tokenSymbol,
+          totalEthBurned: row.totalEthBurned,
+          totalTokensAccrued: row.totalTokensAccrued,
+          totalTransfers: row.totalTransfers,
+          avgTransferAmount: row.avgTransferAmount,
+          avgFeePercentage,
+          impliedPriceInETH,
+          intendedFDV,
+        };
+      })
+    );
+
+    return analytics;
   }
 }
 
