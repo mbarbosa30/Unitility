@@ -239,10 +239,10 @@ export default function SendTokenModal({ preselectedToken, triggerButton }: Send
         amount: amountBigInt,
         paymasterAddress,
         feePercentage: feePercentageBasisPoints,
-        // Increase gas limits for account deployment
-        validationGasLimit: !isDeployed ? BigInt(500000) : BigInt(100000),
-        callGasLimit: !isDeployed ? BigInt(200000) : BigInt(50000),
-        preVerificationGas: !isDeployed ? BigInt(100000) : BigInt(21000),
+        // Increase gas limits for paymaster validation and execution
+        validationGasLimit: !isDeployed ? BigInt(500000) : BigInt(300000),
+        callGasLimit: !isDeployed ? BigInt(300000) : BigInt(150000),
+        preVerificationGas: !isDeployed ? BigInt(100000) : BigInt(50000),
       });
       
       // Override initCode if account not deployed
