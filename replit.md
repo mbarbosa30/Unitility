@@ -8,45 +8,34 @@ The application follows a "Venmo-like" user experience philosophy: send any toke
 
 ## Recent Changes
 
-### November 10, 2025 - Gas Limit and UX Fixes
-- **Fixed AA33 Out-Of-Gas errors**: Tripled gas limits for paymaster validation
-  - callGasLimit: 50K → 150K (deployed accounts), 200K → 300K (undeployed)
-  - verificationGasLimit: 100K → 300K (deployed accounts), 500K unchanged (undeployed)
-  - preVerificationGas: 21K → 50K (deployed accounts), 100K unchanged (undeployed)
-  - Reason: PaymasterPool validation does extensive work (decode callData, check balances/allowances)
-- **Fixed pool creation form**: Reset form state when modal opens to prevent stale fee/minimum values
-- **Fixed token selection UX**: Deduplicate tokens in dropdown - show each token once instead of per-pool
-- **Direct EntryPoint deposits**: Bypass pool.deposit() and call EntryPoint.depositTo() directly for guaranteed deposits
-- **Pool parameters verified**: TALENT pool (0x072330...) correctly configured with 3% fee, 5 TALENT minimum
-
-### November 10, 2025 - ERC-4337 v0.6 EntryPoint Migration
-- **Updated to v0.6 EntryPoint**: Changed from v0.7 (0x0000000071727De22E5E9d8BAf0edAc6f37da032) to v0.6 (0x5FF137D4b0FDCD49DcA30c7CF57E578a026d2789)
-- **Converted UserOp format**: Changed from v0.7 packed format to v0.6 unpacked format for bundler compatibility
-  - Unpacked gas limits: `callGasLimit`, `verificationGasLimit` instead of packed `accountGasLimits`
-  - Unpacked gas fees: `maxFeePerGas`, `maxPriorityFeePerGas` instead of packed `gasFees`
-  - Simplified `paymasterAndData`: Just paymaster address instead of embedded gas limits
-- **Reason**: Existing SimpleAccount (0xe7C0dad97500ccD89fF9361DC5acB20013873bb0) was deployed with v0.6 EntryPoint
-- **Bundler compatibility**: Pimlico bundler expects v0.6 format for the configured EntryPoint
-
-### November 10, 2025 - PaymasterPool v0.6 Struct Fix (CRITICAL)
-- **Root cause identified**: AA33 errors were caused by struct version mismatch, not gas limits
-  - PaymasterPool used `PackedUserOperation` (v0.7 format) but EntryPoint expects unpacked `UserOperation` (v0.6 format)
-  - EntryPoint couldn't properly decode gas limits from packed format → validation failed → AA33 revert
-- **Fixed PaymasterPool contract**: Updated struct from v0.7 packed to v0.6 unpacked format
-  - Replaced `accountGasLimits` (bytes32) with separate `callGasLimit`, `verificationGasLimit` (uint256)
-  - Replaced `gasFees` (bytes32) with separate `maxFeePerGas`, `maxPriorityFeePerGas` (uint256)
-  - Kept `paymasterAndData` as bytes (no embedded gas limits)
-  - Validation logic unchanged (executeBatch + dual transferFrom decoding works correctly)
-- **Deployed v0.6-compatible PaymasterPool**: 0xcdd156edc19d78a7be19e6afa901960d55291374
+### November 10, 2025 - PaymasterPool paymasterAndData Validation Fix (FINAL)
+- **Root cause identified**: Bundler -32603 errors caused by incorrect paymasterAndData packing
+  - PaymasterPool contract expected: address (20B) + postGas (32B) + context (96B) = 148 bytes
+  - Client was only sending paymaster address (20 bytes), missing postGas and context validation data
+  - Contract validation reverted on "paymasterAndData too short" check
+- **Updated PaymasterPool contract**: Added comprehensive paymasterAndData unpacking and validation
+  - Extracts paymaster address from first 20 bytes, verifies it matches contract address
+  - Unpacks postGas limits (32 bytes): uint128 postVerificationGasLimit + uint128 postOpGasLimit (tightly packed)
+  - Validates minimum thresholds: postVerificationGasLimit ≥ 50K, postOpGasLimit ≥ 100K
+  - Decodes context data (96 bytes): recipient address + transfer amount + fee amount
+  - Cross-validates context against executeBatch callData to prevent tampering
+  - All validation happens in assembly/manual unpacking to avoid ABI encoding overhead
+- **Updated client userOp.ts**: Properly packs paymasterAndData with 3-part structure
+  - Part 1: Paymaster address (20 bytes) - direct concat
+  - Part 2: PostGas limits (32 bytes) - TIGHTLY packed as two uint128 values using pad + toHex + concat
+  - Part 3: Context data (96 bytes) - ABI encoded (address recipient, uint256 amount, uint256 fee)
+  - Total: 148 bytes exactly, matching contract expectations
+  - Fixed previous bug where encodeAbiParameters expanded uint128 values into separate 32-byte slots (180 bytes total)
+- **Deployed final PaymasterPool**: 0xf448cc02fb157ee2f05e187cb05f3d5fa08f5c98
   - Token: TALENT (0x9a33406165f562e16c3abd82fd1185482e01b49a)
   - Fee: 3% (300 basis points)
   - Minimum transfer: 5 TALENT tokens
-  - Deployment TX: 0x6f9c1a5b73b02255a39b7876176d4aa65b196ca9e246a9f25e3ce18e611cf392
-  - Compiled with IR-based optimizer (viaIR: true) to handle stack depth
-- **Funded with 0.001 ETH**: Deposited directly to EntryPoint via depositTo()
-  - Funding TX: 0x0b9e84167d6491869a44db78ec3991ccc232dac0bade4186e2dff165350daecd
-- **Database cleaned**: Removed old v0.7 pools, inserted new v0.6 pool
-- **Event indexer**: Restarted to track new pool for deposits, withdrawals, and fee claims
+  - Deployment TX: 0x7ae02923291865f0634b370c45eff698f0d4e0424f75a6fd1874f2a93dc7bb60
+  - Compiled with IR-based optimizer (viaIR: true) for stack depth optimization
+- **Funded with 0.005 ETH**: Deposited directly to EntryPoint via depositTo() for production gas costs
+  - Funding TX: 0x3166607ef76201510a5ffec6d62054fb5dedb214d1ab487031fdf8643dec7e22
+- **Database updated**: Replaced old pool with final v0.6 pool with paymasterAndData validation
+- **Event indexer**: Restarted to track final pool for deposits, withdrawals, and fee claims
 
 ## User Preferences
 
