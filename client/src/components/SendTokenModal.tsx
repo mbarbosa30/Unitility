@@ -229,7 +229,7 @@ export default function SendTokenModal({ preselectedToken, triggerButton }: Send
       setNeedsApproval(false);
       
       // Step 2: Build unsigned UserOperation
-      // Use higher gas limits for account deployment
+      // Use higher gas limits for paymaster validation and execution
       const unsignedUserOp = buildUserOp({
         account: accountAddress,
         eoaOwner: address, // EOA wallet address
@@ -243,6 +243,13 @@ export default function SendTokenModal({ preselectedToken, triggerButton }: Send
         validationGasLimit: !isDeployed ? BigInt(500000) : BigInt(300000),
         callGasLimit: !isDeployed ? BigInt(300000) : BigInt(150000),
         preVerificationGas: !isDeployed ? BigInt(100000) : BigInt(50000),
+      });
+      
+      console.log('[SendToken] Gas limits set:', {
+        isDeployed,
+        callGasLimit: unsignedUserOp.callGasLimit.toString(),
+        verificationGasLimit: unsignedUserOp.verificationGasLimit.toString(),
+        preVerificationGas: unsignedUserOp.preVerificationGas.toString(),
       });
       
       // Override initCode if account not deployed
