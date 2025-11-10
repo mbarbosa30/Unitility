@@ -125,6 +125,7 @@ export default function SendTokenModal({ preselectedToken, triggerButton }: Send
       const amountBigInt = parseEther(amountInTokens);
       
       // Step 1: Build unsigned UserOperation
+      // Use higher gas limits for account deployment
       const unsignedUserOp = buildUserOp({
         account: accountAddress,
         nonce,
@@ -132,11 +133,15 @@ export default function SendTokenModal({ preselectedToken, triggerButton }: Send
         recipientAddress,
         amount: amountBigInt,
         paymasterAddress,
+        // Increase gas limits for account deployment
+        validationGasLimit: !isDeployed ? BigInt(500000) : BigInt(100000),
+        callGasLimit: !isDeployed ? BigInt(200000) : BigInt(50000),
+        preVerificationGas: !isDeployed ? BigInt(100000) : BigInt(21000),
       });
       
       // Override initCode if account not deployed
       if (!isDeployed) {
-        console.log('[SendToken] Account not deployed, adding initCode');
+        console.log('[SendToken] Account not deployed, adding initCode with higher gas limits');
         unsignedUserOp.initCode = initCode;
       } else {
         console.log('[SendToken] Account already deployed, no initCode needed');
