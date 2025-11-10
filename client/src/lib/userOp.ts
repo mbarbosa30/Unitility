@@ -130,6 +130,14 @@ export function buildUserOp(params: BuildUserOpParams): Omit<UserOperation, 'sig
   // Step 1: Calculate fee in tokens (feePercentage is in basis points, e.g., 50 = 0.5%)
   const tokenFee = (amount * BigInt(feePercentage)) / BigInt(10000);
   
+  console.log('[buildUserOp] Building transfers:', {
+    eoaOwner,
+    recipientAddress,
+    paymasterAddress,
+    amount: amount.toString(),
+    tokenFee: tokenFee.toString(),
+  });
+  
   // Step 2: Encode first transferFrom call: transferFrom(eoa, recipient, amount)
   const transferToRecipient = encodeFunctionData({
     abi: ERC20_TRANSFER_FROM_ABI,
@@ -142,6 +150,13 @@ export function buildUserOp(params: BuildUserOpParams): Omit<UserOperation, 'sig
     abi: ERC20_TRANSFER_FROM_ABI,
     functionName: 'transferFrom',
     args: [eoaOwner, paymasterAddress, tokenFee],
+  });
+  
+  console.log('[buildUserOp] Fee transfer details:', {
+    from: eoaOwner,
+    to: paymasterAddress,
+    fee: tokenFee.toString(),
+    encodedLength: transferFeeToPaymaster.length,
   });
   
   // Step 4: Encode SimpleAccount executeBatch call with both transfers
