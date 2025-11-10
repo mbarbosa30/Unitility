@@ -8,6 +8,15 @@ The application follows a "Venmo-like" user experience philosophy: send any toke
 
 ## Recent Changes
 
+### November 10, 2025 - ERC-4337 v0.6 EntryPoint Migration
+- **Updated to v0.6 EntryPoint**: Changed from v0.7 (0x0000000071727De22E5E9d8BAf0edAc6f37da032) to v0.6 (0x5FF137D4b0FDCD49DcA30c7CF57E578a026d2789)
+- **Converted UserOp format**: Changed from v0.7 packed format to v0.6 unpacked format for bundler compatibility
+  - Unpacked gas limits: `callGasLimit`, `verificationGasLimit` instead of packed `accountGasLimits`
+  - Unpacked gas fees: `maxFeePerGas`, `maxPriorityFeePerGas` instead of packed `gasFees`
+  - Simplified `paymasterAndData`: Just paymaster address instead of embedded gas limits
+- **Reason**: Existing SimpleAccount (0xe7C0dad97500ccD89fF9361DC5acB20013873bb0) was deployed with v0.6 EntryPoint
+- **Bundler compatibility**: Pimlico bundler expects v0.6 format for the configured EntryPoint
+
 ### November 10, 2025 - PaymasterPool Redeployment
 - **Fixed TALENT token address mismatch**: Previous deployment used incorrect token address
 - **Deployed new PaymasterPool**: 0xa7c6359200fa376c233a454de456291357d5ed18
