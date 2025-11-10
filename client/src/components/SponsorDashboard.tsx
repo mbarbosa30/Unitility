@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useAccount, useWriteContract, useWaitForTransactionReceipt, usePublicClient } from "wagmi";
-import { parseEther, getAddress, isAddress } from "viem";
+import { parseEther, parseUnits, getAddress, isAddress } from "viem";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Table,
@@ -31,6 +31,8 @@ import type { Pool } from "@shared/schema";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import PaymasterPoolABI from "@/contracts/PaymasterPool.json";
+import PaymasterFactoryABI from "@/contracts/PaymasterFactory.json";
+import { CONTRACTS, getExplorerLink } from "@/lib/contracts";
 
 export default function SponsorDashboard() {
   const [createOpen, setCreateOpen] = useState(false);
@@ -79,28 +81,8 @@ export default function SponsorDashboard() {
   const feesTrend = parseFloat(totalFees) > 0 ? "+18.2" : "0";
   const apyTrend = parseFloat(avgApy) > 5 ? "+2.4" : "-1.2";
 
-  const createPoolMutation = useMutation({
-    mutationFn: async (newPool: any) => {
-      const res = await apiRequest("POST", "/api/pools", newPool);
-      return await res.json();
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/pools"] });
-      toast({
-        title: "Pool Created",
-        description: "Your sponsorship pool is now active",
-      });
-      setCreateOpen(false);
-      resetCreateForm();
-    },
-    onError: (error: any) => {
-      toast({
-        title: "Error",
-        description: error.message || "Failed to create pool",
-        variant: "destructive",
-      });
-    },
-  });
+  const [isCreatingPool, setIsCreatingPool] = useState(false);
+  const [createTxHash, setCreateTxHash] = useState<`0x${string}` | undefined>(undefined);
 
   const updatePoolMutation = useMutation({
     mutationFn: async ({ id, fee }: { id: string; fee: string }) => {
@@ -204,7 +186,18 @@ export default function SponsorDashboard() {
     setMinTokens("");
   };
 
-  const handleCreatePool = () => {
+  const handleCreatePool = async () => {
+    // Validate wallet connection
+    if (!address) {
+      toast({
+        title: "Wallet Not Connected",
+        description: "Please connect your wallet to create a pool",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    // Validate form fields
     if (!tokenAddress || !tokenSymbol || !tokenName || !ethAmount || !feePercentage || !minTokens) {
       toast({
         title: "Validation Error",
@@ -223,20 +216,53 @@ export default function SponsorDashboard() {
       return;
     }
 
-    createPoolMutation.mutate({
-      tokenAddress: getAddress(tokenAddress),
-      tokenSymbol: tokenSymbol.toUpperCase(),
-      tokenName,
-      decimals: tokenDecimals,
-      feePercentage,
-      minTokensPerTransfer: minTokens,
-      ethDeposited: ethAmount,
-      feesEarned: "0",
-      volume: "0",
-      discount: "0",
-      apy: "0",
-      gasPrice: "0.001",
-    });
+    // Validate factory address is configured
+    if (!CONTRACTS.PAYMASTER_FACTORY) {
+      toast({
+        title: "Configuration Error",
+        description: "PaymasterFactory address not configured. Please contact support.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    try {
+      setIsCreatingPool(true);
+
+      // Convert fee percentage to basis points (e.g., 1% = 100 basis points)
+      const feeBasisPoints = BigInt(Math.floor(parseFloat(feePercentage) * 100));
+      
+      // Parse minTokens with proper decimals
+      const minTokensParsed = parseUnits(minTokens, tokenDecimals);
+      
+      // Parse ETH amount
+      const ethValue = parseEther(ethAmount);
+
+      // Call PaymasterFactory.createPool on blockchain
+      writeContract({
+        address: CONTRACTS.PAYMASTER_FACTORY,
+        abi: PaymasterFactoryABI.abi,
+        functionName: "createPool",
+        args: [
+          getAddress(tokenAddress),
+          feeBasisPoints,
+          minTokensParsed,
+        ],
+        value: ethValue,
+      });
+
+      toast({
+        title: "Transaction Initiated",
+        description: "Please approve the transaction in your wallet",
+      });
+    } catch (error: any) {
+      setIsCreatingPool(false);
+      toast({
+        title: "Transaction Failed",
+        description: error.message || "Failed to initiate transaction",
+        variant: "destructive",
+      });
+    }
   };
 
   const handleAdjustPool = (pool: Pool) => {
@@ -306,9 +332,90 @@ export default function SponsorDashboard() {
     }
   };
 
-  // Handle successful transactions
+  // Track txHash when pool creation transaction is sent
   useEffect(() => {
-    if (isTxSuccess && txHash) {
+    if (isCreatingPool && txHash && !createTxHash) {
+      setCreateTxHash(txHash);
+      toast({
+        title: "Transaction Sent",
+        description: "Waiting for confirmation on Base...",
+      });
+    }
+  }, [isCreatingPool, txHash, createTxHash, toast]);
+
+  // Monitor pool creation transaction confirmation
+  useEffect(() => {
+    if (isCreatingPool && createTxHash && !isConfirming && isTxSuccess) {
+      toast({
+        title: "Transaction Confirmed",
+        description: "Waiting for indexer to process your new pool...",
+      });
+
+      let pollInterval: NodeJS.Timeout;
+      let timeoutId: NodeJS.Timeout;
+
+      // Poll for new pool to appear in database (indexer will create it)
+      pollInterval = setInterval(async () => {
+        await queryClient.refetchQueries({ queryKey: ["/api/pools"] });
+        const currentPools = queryClient.getQueryData<Pool[]>(["/api/pools"]);
+        
+        // Check if there's a new pool with our transaction hash
+        const newPool = currentPools?.find(p => 
+          p.transactionHash?.toLowerCase() === createTxHash?.toLowerCase()
+        );
+
+        if (newPool) {
+          clearInterval(pollInterval);
+          clearTimeout(timeoutId);
+          setIsCreatingPool(false);
+          setCreateOpen(false);
+          setCreateTxHash(undefined);
+          resetCreateForm();
+          
+          toast({
+            title: "Pool Created Successfully!",
+            description: (
+              <div className="space-y-1">
+                <p>Your {tokenSymbol} sponsorship pool is now live</p>
+                <a 
+                  href={getExplorerLink(createTxHash, 'tx')} 
+                  target="_blank" 
+                  rel="noopener noreferrer"
+                  className="text-xs underline"
+                >
+                  View on BaseScan →
+                </a>
+              </div>
+            ),
+          });
+        }
+      }, 2000); // Poll every 2 seconds
+
+      // Timeout after 30 seconds
+      timeoutId = setTimeout(() => {
+        clearInterval(pollInterval);
+        if (isCreatingPool) {
+          setIsCreatingPool(false);
+          setCreateTxHash(undefined);
+          queryClient.invalidateQueries({ queryKey: ["/api/pools"] });
+          toast({
+            title: "Pool Created",
+            description: "Your pool may take a moment to appear. Refresh if needed.",
+          });
+        }
+      }, 30000);
+
+      // Cleanup on unmount or when dependencies change
+      return () => {
+        clearInterval(pollInterval);
+        clearTimeout(timeoutId);
+      };
+    }
+  }, [isCreatingPool, createTxHash, isConfirming, isTxSuccess, tokenSymbol, toast, queryClient]);
+
+  // Handle other successful transactions (withdraw, claim)
+  useEffect(() => {
+    if (isTxSuccess && txHash && !isCreatingPool) {
       queryClient.invalidateQueries({ queryKey: ["/api/pools"] });
       toast({
         title: "Transaction Successful",
@@ -320,21 +427,42 @@ export default function SponsorDashboard() {
       setClaimAmount("");
       setSelectedPool(null);
     }
-  }, [isTxSuccess, txHash, withdrawOpen, toast]);
+  }, [isTxSuccess, txHash, withdrawOpen, isCreatingPool, toast]);
 
   // Handle transaction errors
   useEffect(() => {
     if (writeError) {
-      toast({
-        title: "Transaction Failed",
-        description: writeError.message,
-        variant: "destructive",
-      });
+      // Check if user rejected the transaction
+      const isUserRejection = writeError.message.includes("User rejected") || 
+                              writeError.message.includes("User denied") ||
+                              writeError.message.includes("rejected");
+      
+      setIsCreatingPool(false);
+      setCreateTxHash(undefined);
+
+      if (isUserRejection) {
+        toast({
+          title: "Transaction Cancelled",
+          description: "You rejected the transaction in your wallet",
+        });
+      } else {
+        toast({
+          title: "Transaction Failed",
+          description: writeError.message.length > 100 
+            ? "Transaction failed. Please try again." 
+            : writeError.message,
+          variant: "destructive",
+        });
+      }
     }
+    
     if (receiptError) {
+      setIsCreatingPool(false);
+      setCreateTxHash(undefined);
+      
       toast({
-        title: "Transaction Failed",
-        description: "Transaction was reverted on-chain",
+        title: "Transaction Reverted",
+        description: "The transaction was rejected by the blockchain. Please check your inputs and try again.",
         variant: "destructive",
       });
     }
@@ -571,10 +699,16 @@ export default function SponsorDashboard() {
                     <Button
                       onClick={handleCreatePool}
                       className="w-full"
-                      disabled={createPoolMutation.isPending}
+                      disabled={isCreatingPool || isTxPending || isConfirming}
                       data-testid="button-confirm-create"
                     >
-                      {createPoolMutation.isPending ? "Creating..." : "Create Pool"}
+                      {isTxPending 
+                        ? "Approve in Wallet..." 
+                        : isConfirming 
+                        ? "Confirming..." 
+                        : isCreatingPool 
+                        ? "Syncing..." 
+                        : "Create Pool"}
                     </Button>
                   </div>
                 </DialogContent>

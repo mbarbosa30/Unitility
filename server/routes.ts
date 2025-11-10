@@ -24,43 +24,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
     res.json(pool);
   });
 
-  // Create pool
-  app.post("/api/pools", async (req, res) => {
-    try {
-      // Validate required fields
-      const { tokenAddress, contractAddress, sponsor, feePercentage, minTokensPerTransfer, ethDeposited } = req.body;
-      
-      if (!tokenAddress) {
-        return res.status(400).json({ error: "Token address is required" });
-      }
-      
-      if (!feePercentage || parseFloat(feePercentage) < 0) {
-        return res.status(400).json({ error: "Valid fee percentage is required" });
-      }
-      
-      if (!minTokensPerTransfer || parseFloat(minTokensPerTransfer) <= 0) {
-        return res.status(400).json({ error: "Minimum tokens per transfer must be greater than 0" });
-      }
-      
-      if (!ethDeposited || parseFloat(ethDeposited) <= 0) {
-        return res.status(400).json({ error: "ETH deposit must be greater than 0" });
-      }
-      
-      // Normalize addresses to lowercase for consistent storage
-      const normalizedData = {
-        ...req.body,
-        tokenAddress: tokenAddress.toLowerCase(),
-        contractAddress: contractAddress ? contractAddress.toLowerCase() : undefined,
-        sponsor: sponsor ? sponsor.toLowerCase() : undefined,
-      };
-      
-      const pool = await storage.createPool(normalizedData);
-      res.status(201).json(pool);
-    } catch (error: any) {
-      console.error("[API] Error creating pool:", error);
-      res.status(500).json({ error: error.message || "Failed to create pool" });
-    }
-  });
+  // Note: Pool creation is handled exclusively by the blockchain event indexer.
+  // Frontend submits transactions to PaymasterFactory.createPool() smart contract,
+  // and the indexer syncs PoolCreated events to the database.
+  // No HTTP endpoint is provided to prevent unauthorized pool creation.
 
   // Update pool (supports atomic increments)
   app.patch("/api/pools/:id", async (req, res) => {
