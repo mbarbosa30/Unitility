@@ -561,11 +561,11 @@ export default function SendTokenModal({ preselectedToken, triggerButton }: Send
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                {pools?.map((pool) => (
-                  <SelectItem key={pool.id} value={pool.tokenSymbol}>
+                {Array.from(new Set(pools?.map(p => p.tokenSymbol) || [])).map((symbol) => (
+                  <SelectItem key={symbol} value={symbol}>
                     <div className="flex items-center gap-2">
-                      <TokenIcon symbol={pool.tokenSymbol} size="sm" />
-                      <span className="font-medium">{pool.tokenSymbol}</span>
+                      <TokenIcon symbol={symbol} size="sm" />
+                      <span className="font-medium">{symbol}</span>
                     </div>
                   </SelectItem>
                 ))}

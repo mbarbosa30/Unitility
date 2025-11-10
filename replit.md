@@ -8,6 +8,17 @@ The application follows a "Venmo-like" user experience philosophy: send any toke
 
 ## Recent Changes
 
+### November 10, 2025 - Gas Limit and UX Fixes
+- **Fixed AA33 Out-Of-Gas errors**: Tripled gas limits for paymaster validation
+  - callGasLimit: 50K → 150K (deployed accounts), 200K → 300K (undeployed)
+  - verificationGasLimit: 100K → 300K (deployed accounts), 500K unchanged (undeployed)
+  - preVerificationGas: 21K → 50K (deployed accounts), 100K unchanged (undeployed)
+  - Reason: PaymasterPool validation does extensive work (decode callData, check balances/allowances)
+- **Fixed pool creation form**: Reset form state when modal opens to prevent stale fee/minimum values
+- **Fixed token selection UX**: Deduplicate tokens in dropdown - show each token once instead of per-pool
+- **Direct EntryPoint deposits**: Bypass pool.deposit() and call EntryPoint.depositTo() directly for guaranteed deposits
+- **Pool parameters verified**: TALENT pool (0x072330...) correctly configured with 3% fee, 5 TALENT minimum
+
 ### November 10, 2025 - ERC-4337 v0.6 EntryPoint Migration
 - **Updated to v0.6 EntryPoint**: Changed from v0.7 (0x0000000071727De22E5E9d8BAf0edAc6f37da032) to v0.6 (0x5FF137D4b0FDCD49DcA30c7CF57E578a026d2789)
 - **Converted UserOp format**: Changed from v0.7 packed format to v0.6 unpacked format for bundler compatibility
