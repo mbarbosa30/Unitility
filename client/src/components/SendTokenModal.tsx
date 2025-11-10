@@ -284,94 +284,10 @@ export default function SendTokenModal({ preselectedToken, triggerButton }: Send
         );
       }
       
-      // Step 4.6: Verify nonce and entryPoint from contract (debugging AA23)
-      const { readContract } = await import('wagmi/actions');
-      const [onChainNonce, accountEntryPoint] = await Promise.all([
-        readContract(wagmiConfig, {
-          address: smartAccountAddress as Hex,
-          abi: [{
-            inputs: [],
-            name: 'getNonce',
-            outputs: [{ type: 'uint256' }],
-            stateMutability: 'view',
-            type: 'function',
-          }],
-          functionName: 'getNonce',
-        }),
-        readContract(wagmiConfig, {
-          address: smartAccountAddress as Hex,
-          abi: [{
-            inputs: [],
-            name: 'entryPoint',
-            outputs: [{ type: 'address' }],
-            stateMutability: 'view',
-            type: 'function',
-          }],
-          functionName: 'entryPoint',
-        }),
-      ]);
-      
-      console.log('[SendToken] Nonce verification:', {
-        userOpNonce: unsignedUserOp.nonce.toString(),
-        onChainNonce: onChainNonce.toString(),
-        nonceMatch: unsignedUserOp.nonce === onChainNonce,
-      });
-      
-      console.log('[SendToken] EntryPoint verification:', {
-        accountEntryPoint,
-        expectedEntryPoint: ENTRY_POINT_ADDRESS,
-        entryPointMatch: accountEntryPoint.toLowerCase() === ENTRY_POINT_ADDRESS.toLowerCase(),
-      });
-      
-      if (unsignedUserOp.nonce !== onChainNonce) {
-        throw new Error(
-          `Nonce MISMATCH! ` +
-          `UserOp nonce: ${unsignedUserOp.nonce}, ` +
-          `On-chain nonce: ${onChainNonce}. ` +
-          `This will cause AA23 validation failure.`
-        );
-      }
-      
-      if (accountEntryPoint.toLowerCase() !== ENTRY_POINT_ADDRESS.toLowerCase()) {
-        throw new Error(
-          `EntryPoint MISMATCH! ` +
-          `Account's EntryPoint: ${accountEntryPoint}, ` +
-          `Expected: ${ENTRY_POINT_ADDRESS}. ` +
-          `The SimpleAccount was deployed with wrong EntryPoint address. ` +
-          `This explains the "account: not Owner or EntryPoint" error!`
-        );
-      }
-      
-      // Step 5: Simulate executeBatch locally to check for reverts
-      console.log('[SendToken] Simulating executeBatch call...');
-      try {
-        const simulationResult = await publicClient!.call({
-          to: smartAccountAddress,
-          data: unsignedUserOp.callData,
-          account: ENTRY_POINT_ADDRESS, // Simulate as if EntryPoint is calling
-        });
-        console.log('[SendToken] CallData simulation SUCCESS:', {
-          result: simulationResult,
-        });
-      } catch (simError: any) {
-        console.error('[SendToken] CallData simulation FAILED:', {
-          error: simError,
-          message: simError?.message,
-          shortMessage: simError?.shortMessage,
-          details: simError?.details,
-          cause: simError?.cause,
-        });
-        
-        throw new Error(
-          `CallData would revert! ${simError?.shortMessage || simError?.message || 'Unknown error'}. ` +
-          `This is likely why AA23 is failing. Check token allowances and balances.`
-        );
-      }
-      
-      // Step 6: Attach signature to create complete UserOperation
+      // Step 5: Attach signature to create complete UserOperation
       const signedUserOp = signUserOp(unsignedUserOp, signature);
       
-      // Step 7: Submit to bundler
+      // Step 6: Submit to bundler
       const userOpHashResult = await bundlerClient.sendUserOperation(
         signedUserOp,
         ENTRY_POINT_ADDRESS
