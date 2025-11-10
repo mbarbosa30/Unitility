@@ -283,6 +283,35 @@ export default function SendTokenModal({ preselectedToken, triggerButton }: Send
         );
       }
       
+      // Step 4.6: Verify nonce from contract (debugging AA23)
+      const { readContract } = await import('wagmi/actions');
+      const onChainNonce = await readContract(config, {
+        address: smartAccountAddress,
+        abi: [{
+          inputs: [],
+          name: 'getNonce',
+          outputs: [{ type: 'uint256' }],
+          stateMutability: 'view',
+          type: 'function',
+        }],
+        functionName: 'getNonce',
+      });
+      
+      console.log('[SendToken] Nonce verification:', {
+        userOpNonce: unsignedUserOp.nonce.toString(),
+        onChainNonce: onChainNonce.toString(),
+        nonceMatch: unsignedUserOp.nonce === onChainNonce,
+      });
+      
+      if (unsignedUserOp.nonce !== onChainNonce) {
+        throw new Error(
+          `Nonce MISMATCH! ` +
+          `UserOp nonce: ${unsignedUserOp.nonce}, ` +
+          `On-chain nonce: ${onChainNonce}. ` +
+          `This will cause AA23 validation failure.`
+        );
+      }
+      
       // Step 5: Attach signature to create complete UserOperation
       const signedUserOp = signUserOp(unsignedUserOp, signature);
       
