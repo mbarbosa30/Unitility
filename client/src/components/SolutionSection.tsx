@@ -17,7 +17,7 @@ export default function SolutionSection() {
 
           <div className="prose prose-lg md:prose-xl max-w-4xl mx-auto dark:prose-invert text-center">
             <p className="text-lg md:text-xl leading-relaxed">
-              Deposit ETH. Pick a token. Set fee (0.1-1%). Users send gasless—pay tiny slice in-token. 
+              Deposit ETH. Pick a token. Set your fee. Users send gasless—pay tiny slice in-token. 
               You earn traction yield. Rebalancers arb discounts. Over time: ETH burned vs. fees accrued = <span className="font-bold text-primary">intended marketcap</span>. 
               Tokens price themselves.
             </p>

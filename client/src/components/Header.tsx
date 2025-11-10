@@ -5,12 +5,15 @@ import { useState, useEffect } from "react";
 import { Link, useLocation } from "wouter";
 
 export default function Header() {
-  const [darkMode, setDarkMode] = useState(false);
+  const [darkMode, setDarkMode] = useState(true);
   const [location] = useLocation();
 
   useEffect(() => {
     const isDark = document.documentElement.classList.contains("dark");
-    setDarkMode(isDark);
+    if (!isDark) {
+      document.documentElement.classList.add("dark");
+    }
+    setDarkMode(true);
   }, []);
 
   const toggleDarkMode = () => {
