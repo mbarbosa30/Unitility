@@ -13,6 +13,7 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import TokenIcon from "./TokenIcon";
 import PoolDiscount from "./PoolDiscount";
+import SendTokenModal from "./SendTokenModal";
 import { ArrowUpDown, Send, Inbox } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { usePublicClient } from "wagmi";
@@ -116,14 +117,19 @@ function PoolRow({ pool, formatVolume }: { pool: Pool; formatVolume: (v: string)
         </div>
       </TableCell>
       <TableCell className="text-right">
-        <Button 
-          size="sm" 
-          className="gap-2" 
-          data-testid={`button-send-${pool.tokenSymbol}`}
-        >
-          <Send className="h-3.5 w-3.5" />
-          Send
-        </Button>
+        <SendTokenModal 
+          preselectedToken={pool.tokenSymbol}
+          triggerButton={
+            <Button 
+              size="sm" 
+              className="gap-2" 
+              data-testid={`button-send-${pool.tokenSymbol}`}
+            >
+              <Send className="h-3.5 w-3.5" />
+              Send
+            </Button>
+          }
+        />
       </TableCell>
     </TableRow>
   );

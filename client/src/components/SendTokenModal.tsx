@@ -33,9 +33,14 @@ import { base } from "viem/chains";
 import { useSmartWalletStatus } from "@/hooks/useSmartWalletStatus";
 import { selectBestPool } from "@/lib/poolSelection";
 
-export default function SendTokenModal() {
+interface SendTokenModalProps {
+  preselectedToken?: string;
+  triggerButton?: React.ReactNode;
+}
+
+export default function SendTokenModal({ preselectedToken, triggerButton }: SendTokenModalProps = {}) {
   const [open, setOpen] = useState(false);
-  const [selectedToken, setSelectedToken] = useState("DOGGO");
+  const [selectedToken, setSelectedToken] = useState(preselectedToken || "");
   const [amount, setAmount] = useState("");
   const [recipient, setRecipient] = useState("");
   const { toast } = useToast();
@@ -52,12 +57,14 @@ export default function SendTokenModal() {
     queryKey: ["/api/pools"],
   });
 
-  // TODO: Replace with actual wallet token balances using wagmi/viem
-  const mockBalances: Record<string, string> = {
-    DOGGO: "1240.00",
-    USDC: "500.00",
-    RARE: "89.50",
-  };
+  // Set default token when pools load or when preselectedToken changes
+  useEffect(() => {
+    if (preselectedToken) {
+      setSelectedToken(preselectedToken);
+    } else if (pools && pools.length > 0 && !selectedToken) {
+      setSelectedToken(pools[0].tokenSymbol);
+    }
+  }, [pools, selectedToken, preselectedToken]);
 
   // Use intelligent pool selection to find the best pool for this transfer
   const { data: poolSelection } = useQuery({
@@ -226,10 +233,12 @@ export default function SendTokenModal() {
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <Button size="lg" className="gap-2" data-testid="button-send-token">
-          <Send className="h-4 w-4" />
-          Send Token
-        </Button>
+        {triggerButton || (
+          <Button size="lg" className="gap-2" data-testid="button-send-token">
+            <Send className="h-4 w-4" />
+            Send Token
+          </Button>
+        )}
       </DialogTrigger>
       <DialogContent className="sm:max-w-md" data-testid="modal-send-token">
         <DialogHeader>
@@ -321,12 +330,7 @@ export default function SendTokenModal() {
                   <SelectItem key={pool.tokenSymbol} value={pool.tokenSymbol}>
                     <div className="flex items-center gap-2">
                       <TokenIcon symbol={pool.tokenSymbol} size="sm" />
-                      <div className="flex flex-col">
-                        <span className="font-medium">{pool.tokenSymbol}</span>
-                        <span className="text-xs text-muted-foreground">
-                          Balance: {mockBalances[pool.tokenSymbol] || "0.00"}
-                        </span>
-                      </div>
+                      <span className="font-medium">{pool.tokenSymbol}</span>
                     </div>
                   </SelectItem>
                 ))}
@@ -335,18 +339,7 @@ export default function SendTokenModal() {
           </div>
 
           <div className="space-y-2">
-            <div className="flex items-center justify-between">
-              <Label htmlFor="amount">Amount</Label>
-              <Button
-                variant="ghost"
-                className="h-12"
-                onClick={() => setAmount(mockBalances[selectedToken]?.replace(/,/g, "") || "")}
-                disabled={sendTokenMutation.isPending}
-                data-testid="button-max"
-              >
-                Max
-              </Button>
-            </div>
+            <Label htmlFor="amount">Amount</Label>
             <Input
               id="amount"
               type="number"
