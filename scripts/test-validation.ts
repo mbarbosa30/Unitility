@@ -11,26 +11,75 @@ const publicClient = createPublicClient({
   transport: http(RPC_URL),
 });
 
-// UserOp from actual logs
+// Build UserOp with correct parameters - we'll build callData ourselves
+import { encodeFunctionData, parseAbiParameters as parseParams } from 'viem';
+
+const ERC20_TRANSFER_FROM_ABI = [{
+  inputs: [
+    { name: 'from', type: 'address' },
+    { name: 'to', type: 'address' },
+    { name: 'value', type: 'uint256' }
+  ],
+  name: 'transferFrom',
+  outputs: [{ name: '', type: 'bool' }],
+  stateMutability: 'nonpayable',
+  type: 'function'
+}] as const;
+
+const EXECUTE_BATCH_ABI = [{
+  inputs: [
+    { name: 'dest', type: 'address[]' },
+    { name: 'func', type: 'bytes[]' }
+  ],
+  name: 'executeBatch',
+  outputs: [],
+  stateMutability: 'nonpayable',
+  type: 'function'
+}] as const;
+
+const eoaOwner = '0x216844eF94D95279c6d1631875F2dd93FbBdfB61';
+const recipientAddr = '0x1116e33f241a3ff3d05276e8b0c895361aa669b3';
+const amountToSend = 30000000000000000000n; // 30 TALENT
+const feeToPaymaster = 900000000000000000n; // 0.9 TALENT
+
+// Build the two transferFrom calls
+const transferToRecipient = encodeFunctionData({
+  abi: ERC20_TRANSFER_FROM_ABI,
+  functionName: 'transferFrom',
+  args: [eoaOwner as `0x${string}`, recipientAddr as `0x${string}`, amountToSend],
+});
+
+const transferFeeToPaymaster = encodeFunctionData({
+  abi: ERC20_TRANSFER_FROM_ABI,
+  functionName: 'transferFrom',
+  args: [eoaOwner as `0x${string}`, PAYMASTER_POOL as `0x${string}`, feeToPaymaster],
+});
+
+// Build executeBatch callData
+const callDataGenerated = encodeFunctionData({
+  abi: EXECUTE_BATCH_ABI,
+  functionName: 'executeBatch',
+  args: [
+    [TALENT_TOKEN as `0x${string}`, TALENT_TOKEN as `0x${string}`],
+    [transferToRecipient, transferFeeToPaymaster]
+  ],
+});
+
 const testUserOp = {
   sender: '0xe7C0dad97500ccD89fF9361DC5acB20013873bb0',
   nonce: 0n,
   initCode: '0x' as `0x${string}`,
-  callData: '0x18dfb3c7000000000000000000000000000000000000000000000000000000000000004000000000000000000000000000000000000000000000000000000000000000a000000000000000000000000000000000000000000000000000000000000000020000000000000000000000009a33406165f562e16c3abd82fd1185482e01b49a0000000000000000000000009a33406165f562e16c3abd82fd1185482e01b49a0000000000000000000000000000000000000000000000000000000000000002000000000000000000000000000000000000000000000000000000000000004000000000000000000000000000000000000000000000000000000000000000e0000000000000000000000000000000000000000000000000000000000000006423b872dd000000000000000000000000216844ef94d95279c6d1631875f2dd93fbbdfb610000000000000000000000001116e33f241a3ff3d05276e8b0c895361aa669b300000000000000000000000000000000000000000000000008ac7230489e8000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000006423b872dd000000000000000000000000216844ef94d95279c6d1631875f2dd93fbbdfb61000000000000000000000000d854ce29e07381bfd9459a370830c93dbe7256ff0000000000000000000000000000000000000000000000000429d069189e0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000' as `0x${string}`,
+  callData: callDataGenerated,
   callGasLimit: 250000n,
   verificationGasLimit: 300000n,
   preVerificationGas: 60000n,
-  maxFeePerGas: 1000000000n,
-  maxPriorityFeePerGas: 1000000000n,
+  maxFeePerGas: 100000000n,
+  maxPriorityFeePerGas: 1000000n,
   paymasterAndData: '0x' as `0x${string}`,
-  signature: '0x8eabca17c99d6f05377f626c1e6e8c2d337c6881690b9c261cae05a691ba2ea74712a924afd110572bc1a2b13aff91aa6551297b564e055092b96e8d413e00231b' as `0x${string}`,
+  signature: '0x71a9c7ccce47375662c5d6a6325695182389cbe1b3e59e656ceff7a42a8a5e6b40212373d4289de8d8fb01b7436aa7089c8f407a7b76daca0f84e3f3beb28e2f1b' as `0x${string}`,
 };
 
-// Build paymasterAndData
-const recipient = '0x1116e33f241a3ff3d05276e8b0c895361aa669b3';
-const amount = 10000000000000000000n; // 10 TALENT
-const fee = 300000000000000000n; // 0.3 TALENT (3%)
-
+// Build paymasterAndData - using actual parameters from latest send attempt
 const postGas = concat([
   pad(toHex(60000n, { size: 16 }), { size: 16 }), // postVerificationGasLimit
   pad(toHex(150000n, { size: 16 }), { size: 16 }), // postOpGasLimit
@@ -38,7 +87,7 @@ const postGas = concat([
 
 const context = encodeAbiParameters(
   parseAbiParameters('address to, uint256 amount, uint256 fee'),
-  [recipient as `0x${string}`, amount, fee]
+  [recipientAddr as `0x${string}`, amountToSend, feeToPaymaster]
 );
 
 testUserOp.paymasterAndData = concat([

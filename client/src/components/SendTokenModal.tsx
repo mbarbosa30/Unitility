@@ -239,8 +239,9 @@ export default function SendTokenModal({ preselectedToken, triggerButton }: Send
         amount: amountBigInt,
         paymasterAddress,
         feePercentage: feePercentageBasisPoints,
-        // Increase gas limits for batched transferFrom calls and paymaster validation
-        validationGasLimit: !isDeployed ? BigInt(500000) : BigInt(300000),
+        // Increase gas limits for batched transferFrom calls and complex paymaster validation
+        // Paymaster validation needs high gas due to: owner() call, calldata decoding, balance/allowance checks
+        validationGasLimit: !isDeployed ? BigInt(700000) : BigInt(500000), // Increased for complex paymaster logic
         callGasLimit: !isDeployed ? BigInt(400000) : BigInt(250000), // Increased for two transferFrom calls
         preVerificationGas: !isDeployed ? BigInt(100000) : BigInt(60000),
       });
