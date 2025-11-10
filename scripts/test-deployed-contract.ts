@@ -2,7 +2,7 @@ import { createPublicClient, http } from 'viem';
 import { base } from 'viem/chains';
 
 const RPC_URL = process.env.VITE_BASE_RPC_URL || 'https://mainnet.base.org';
-const PAYMASTER = '0xf448cc02fb157ee2f05e187cb05f3d5fa08f5c98';
+const PAYMASTER = '0x66dc832363f1eb1693cacef3a6db0c63bdf6ab0e'; // NEW deployment with batch support
 
 const publicClient = createPublicClient({
   chain: base,

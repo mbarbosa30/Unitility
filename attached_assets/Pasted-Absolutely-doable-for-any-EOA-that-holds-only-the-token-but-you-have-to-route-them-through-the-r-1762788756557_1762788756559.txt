@@ -1,0 +1,163 @@
+Absolutely doable—**for any EOA that holds only the token**—but you have to route them through the right path depending on what the token supports. Here’s the clean, production-ready design that “just works” for users while the system handles all the gas and weird edge cases.
+
+# Capability matrix (the 3 paths)
+
+**Goal:** user has *no ETH*, only token **T**, and wants to send **T**. We make it happen.
+
+1. **Path A — Pull-based tokens (best UX, truly gasless)**
+
+   * Works if **T** supports a “pull” standard:
+
+     * **EIP-3009** `transferWithAuthorization`
+     * **ERC-2612** + `transferFrom` (DAI/USDC-style permits)
+     * (Optionally) **Permit2** *after* a one-time approval exists
+   * Flow: User signs an off-chain permit → our **Router** submits a tx that **pulls** tokens from the user and pays gas via the **Paymaster**.
+   * No ETH needed; instantaneous.
+
+2. **Path B — “Atomic Gas Sponsorship” bundle (works for *any* ERC-20, even plain ones)**
+
+   * For tokens with **no permit** at all.
+   * We build a **single private bundle** of txs to a builder/relay that executes atomically:
+
+     1. **Sponsor funds** the user EOA with just enough ETH for gas (tx #1).
+     2. User’s signed txs (prepared by our client) do:
+
+        * `approve` our Router (if needed) and then
+        * `transferFrom` tokens via Router (tx #2/#3).
+     3. **Auto-refund leftover ETH** back to sponsor in the same bundle (tx #4).
+   * If *any* step fails, **nothing lands onchain** (atomic bundle). User never needs to manage ETH.
+
+3. **Path C — Smart-Account lane (optional, if you already run 4337 accounts)**
+
+   * We can deploy a **counterfactual 4337 account** for the user and sponsor **userOps** with a **Paymaster**.
+   * Useful if your product already gives users accounts; otherwise Path B is simpler for plain EOAs.
+
+---
+
+# End-to-end flow (what the system does)
+
+## Common front-end UX
+
+* User picks token **T**, recipient, amount **A**.
+* We detect capabilities:
+
+  * If **EIP-3009 / ERC-2612** available → **Path A**.
+  * Else → **Path B** (atomic bundle).
+
+### Path A details (permit pull)
+
+1. **Quote fee** φ (in **T**) and show effective cost.
+2. User signs permit (e.g., 3009 authorization or 2612 permit).
+3. **Router**:
+
+   * Validates permit & deadlines.
+   * Executes `transferFrom(user → recipient, A)` and **fee** transfer `φ·A → Pool[T]`.
+4. **Paymaster** pays ETH gas.
+5. **Pool[T]** books the token fee. Done.
+
+### Path B details (atomic gas sponsorship)
+
+1. **Simulate** the user’s token balance/allowance; compute gas for approve+transfer if needed.
+2. **Prepare three signatures** from the user off-chain:
+
+   * `approve(T → Router, A+fee)` (if allowance insufficient)
+   * `transferFrom(user → recipient, A)`
+   * `fee transfer (φ·A → Pool[T])` (or Router pulls fee inside the same call)
+3. Build a **private bundle**:
+
+   * tx1: Sponsor → user (fund **ε ETH** for gas, exact metered amount)
+   * tx2: User’s `approve` (if needed)
+   * tx3: Router call to move tokens (and fee)
+   * tx4: User (or Router) **refunds leftover ETH** back to sponsor
+4. Submit to a private builder/relay (so no one can sandwich it).
+5. If any tx reverts, the builder discards the **entire** bundle—no partial ETH left behind.
+
+> This is the key trick: we never “sponsor” a raw EOA tx onchain (impossible); we **temporarily lend** ETH *inside an atomic bundle* and claw it back in the same bundle. From the user’s POV it’s still gasless.
+
+---
+
+# Contracts you need (minimal set)
+
+## 1) Router
+
+* Accepts permits (3009 / 2612) and plain approvals.
+* Pulls **A + φ·A** from user, sends **A** to recipient, books **φ·A** to `Pool[T]`.
+* Validates token adapters (fee-on-transfer, rebasing) via **balance-delta checks**.
+* Emits:
+
+  * `TokenSent(user, recipient, token, amount, fee, txHashRef)`
+
+## 2) Paymaster (for Path A and for any 4337 lanes)
+
+* Enforces per-token **min ETH buffer**, per-sender **velocity limits**, **gas caps**.
+* Bills `actualGasCost` to `Pool[T].ethReserve`.
+* Never does external calls in `postOp` except trusted accounting.
+
+## 3) PoolRegistry / Pool[T]
+
+* Holds `ethReserve` (gas budget) and accumulates token fees.
+* Emits:
+
+  * `GasSponsored(token, actualGasWei)`
+  * `TokenFeeCollected(token, feeAmount)`
+* (Optional) Rebalancing methods (auctions/RFQ) to sell inventory **T** for ETH.
+
+## 4) TokenAdapter library
+
+* **feature flags** per token:
+
+  * `supports3009`, `supports2612`, `isFeeOnTransfer`, `decimals`, `oracle`, `bandBps`
+* “Safe pull” helpers that compute **actual token deltas** before/after.
+
+---
+
+# Safety & abuse controls (must-haves)
+
+* **Oracle bands** for any internal sell pricing; **no selling** inventory if price drifts past band.
+* **Per-sender velocity** & **per-token spend caps** to stop spam and griefing.
+* **Bundle guard**: Path B always goes via **private relay**; public mempool is forbidden for “temporary ETH” flows.
+* **Permit hygiene**: check domain separators, nonces, deadlines, chainId; reject replay.
+* **Token quirks**: use `SafeERC20`, and compute fees from **balance-delta**, not nominal amounts.
+
+---
+
+# API surface (front end ↔ relayer)
+
+```ts
+// 1) Capability detection
+GET /capabilities?token=T
+-> { path: "A"|"B", supports: { eip3009:boolean, erc2612:boolean, permit2:boolean } }
+
+// 2) Quote & fee
+POST /quote
+{ token:T, amount:A, recipient:R }
+-> { feeBps, feeAmount, gasEstimateETH, path:"A"|"B", bundleGasETH? }
+
+// 3) Prepare & sign
+POST /prepare
+{ token:T, amount:A, recipient:R, path }
+-> { messageHashes, typedDatas } // user signs
+
+// 4) Execute
+POST /send
+{ signatures[], path, slippage?, deadline }
+-> { txHash | bundleId, explorerUrl }
+```
+
+---
+
+# Edge cases handled
+
+* **No permit + no prior allowance** → Path B atomic bundle handles it without the user touching ETH.
+* **Fee-on-transfer tokens** → Router measures **received** amount and recomputes fee on actual delta.
+* **Rebasing tokens** → only use balance deltas, never assume `amount` equality.
+* **Weird decimals** → use adapter metadata and onchain reads.
+
+---
+
+# Why this satisfies “anyone with only the token can send”
+
+* If token supports pull/permit → we’re 100% gasless (Path A).
+* If it does **not** → we still do it **without user ETH** by atomically fronting and reclaiming gas inside a protected bundle (Path B). From the user’s perspective it’s the same one-click send.
+
+If you want, I can drop a minimal **Router.sol** skeleton (with 3009/2612 handling + balance-delta fee logic) and a **bundle builder** outline so your relayer can execute Path B safely.
