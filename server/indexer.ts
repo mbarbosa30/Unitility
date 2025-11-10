@@ -134,12 +134,111 @@ export class BlockchainIndexer {
     console.log(`[Indexer] Watching ${this.poolAddresses.size} pools for events`);
   }
 
+  /**
+   * Verify pool creation with health checks
+   * Ensures database state matches blockchain state and pool is healthy
+   * 
+   * Health threshold: 0.001 ETH = ~$3-4 at current prices
+   * This covers gas for 1 typical AA transaction (userOp + paymaster validation)
+   */
+  private async verifyPoolCreation(poolAddress: `0x${string}`) {
+    try {
+      console.log('[Indexer] Verifying pool creation...');
+      
+      // Fetch pool from database
+      const dbPool = await storage.getPoolByContractAddress(poolAddress.toLowerCase());
+      if (!dbPool) {
+        console.error('[Indexer] VERIFICATION FAILED: Pool not found in database');
+        return;
+      }
+      
+      // Read contract state
+      const [contractFee, contractMinTransfer, contractSponsor, contractTokenAddress, ethBalance] = await Promise.all([
+        this.publicClient.readContract({
+          address: poolAddress,
+          abi: PaymasterPoolABI.abi,
+          functionName: 'feePct',
+        }) as Promise<bigint>,
+        this.publicClient.readContract({
+          address: poolAddress,
+          abi: PaymasterPoolABI.abi,
+          functionName: 'minTransfer',
+        }) as Promise<bigint>,
+        this.publicClient.readContract({
+          address: poolAddress,
+          abi: PaymasterPoolABI.abi,
+          functionName: 'sponsor',
+        }) as Promise<`0x${string}`>,
+        this.publicClient.readContract({
+          address: poolAddress,
+          abi: PaymasterPoolABI.abi,
+          functionName: 'token',
+        }) as Promise<`0x${string}`>,
+        this.publicClient.getBalance({ address: poolAddress }),
+      ]);
+      
+      // Verify database matches blockchain
+      const dbFee = parseFloat(dbPool.feePercentage) * 100; // Convert back to basis points
+      const contractFeeNum = Number(contractFee);
+      const dbSponsor = dbPool.sponsor.toLowerCase();
+      const contractSponsorLower = contractSponsor.toLowerCase();
+      const dbTokenAddress = dbPool.tokenAddress.toLowerCase();
+      const contractTokenAddressLower = contractTokenAddress.toLowerCase();
+      const dbMinTransfer = parseUnits(dbPool.minTokensPerTransfer, dbPool.decimals);
+      
+      const feeMatches = Math.abs(dbFee - contractFeeNum) < 0.01;
+      const sponsorMatches = dbSponsor === contractSponsorLower;
+      const tokenAddressMatches = dbTokenAddress === contractTokenAddressLower;
+      const minTransferMatches = dbMinTransfer === contractMinTransfer;
+      
+      if (!feeMatches || !sponsorMatches || !tokenAddressMatches || !minTransferMatches) {
+        console.error('[Indexer] VERIFICATION FAILED: Database mismatch', {
+          feeMatches,
+          dbFee,
+          contractFee: contractFeeNum,
+          sponsorMatches,
+          dbSponsor,
+          contractSponsor: contractSponsorLower,
+          tokenAddressMatches,
+          dbTokenAddress,
+          contractTokenAddress: contractTokenAddressLower,
+          minTransferMatches,
+          dbMinTransfer: dbMinTransfer.toString(),
+          contractMinTransfer: contractMinTransfer.toString(),
+        });
+        return;
+      }
+      
+      // Health checks
+      const hasETH = ethBalance > BigInt(0);
+      const minGasReserve = parseEther('0.001'); // Minimum 0.001 ETH for ~1 transaction (~$3-4 at current prices)
+      const isHealthy = ethBalance >= minGasReserve;
+      
+      console.log('[Indexer] VERIFICATION PASSED:', {
+        address: poolAddress,
+        dataIntegrity: 'Database matches blockchain state',
+        ethBalance: formatEther(ethBalance) + ' ETH',
+        healthStatus: isHealthy ? 'Healthy (>=0.001 ETH)' : 'Low ETH (needs deposit)',
+        sponsor: contractSponsor,
+        fee: (Number(contractFee) / 100) + '%',
+        minTransfer: formatUnits(contractMinTransfer, dbPool.decimals) + ' ' + dbPool.tokenSymbol,
+      });
+      
+      if (!hasETH) {
+        console.warn('[Indexer] WARNING: Pool has no ETH balance. Sponsor should deposit ETH to enable gasless transfers.');
+      }
+      
+    } catch (error) {
+      console.error('[Indexer] VERIFICATION ERROR:', error);
+    }
+  }
+
   private async handlePoolCreatedLogs(logs: any[]) {
     for (const log of logs) {
       try {
         // Handle chain reorganizations
         if (log.removed) {
-          console.log('[Indexer] PoolCreated event removed (reorg):', log.transactionHash);
+          console.log('[Indexer] WARNING: PoolCreated event removed (reorg):', log.transactionHash);
           
           // Remove pool and all its transactions from database
           const pool = await storage.getPoolByTransactionHash(log.transactionHash);
@@ -211,7 +310,7 @@ export class BlockchainIndexer {
         }
 
         // Create pool in database
-        await storage.createPool({
+        const poolData = {
           contractAddress: poolAddress.toLowerCase(),
           tokenAddress: tokenAddress.toLowerCase(),
           tokenSymbol,
@@ -228,9 +327,22 @@ export class BlockchainIndexer {
           chainId: base.id,
           blockNumber: Number(log.blockNumber),
           transactionHash: log.transactionHash,
+        };
+        
+        await storage.createPool(poolData);
+
+        console.log('[Indexer] Pool saved to database:', {
+          address: poolAddress,
+          token: `${tokenSymbol} (${tokenName})`,
+          sponsor,
+          fee: poolData.feePercentage + '%',
+          minTransfer: formatUnits(minTransfer, decimals),
+          blockNumber: poolData.blockNumber,
+          txHash: log.transactionHash,
         });
 
-        console.log('[Indexer] Pool saved to database:', poolAddress);
+        // Verify pool creation with health checks
+        await this.verifyPoolCreation(poolAddress);
 
         // Restart pool event watchers with new pool
         this.watchPoolEvents();

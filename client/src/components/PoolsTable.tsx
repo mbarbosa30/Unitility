@@ -12,7 +12,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import TokenIcon from "./TokenIcon";
-import DiscountBadge from "./DiscountBadge";
+import PoolDiscount from "./PoolDiscount";
 import { ArrowUpDown, Send, Inbox } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { usePublicClient } from "wagmi";
@@ -103,7 +103,7 @@ function PoolRow({ pool, formatVolume }: { pool: Pool; formatVolume: (v: string)
         {pool.gasPrice} gwei
       </TableCell>
       <TableCell>
-        <DiscountBadge discount={parseFloat(pool.discount)} />
+        <PoolDiscount pool={pool} />
       </TableCell>
       <TableCell className="text-right">
         <div className="flex flex-col gap-0.5">
@@ -348,7 +348,7 @@ export default function PoolsTable() {
                       </span>
                     </div>
                   </div>
-                  <DiscountBadge discount={parseFloat(pool.discount)} />
+                  <PoolDiscount pool={pool} />
                 </div>
 
                 <div className="grid grid-cols-2 gap-3 mb-3">
