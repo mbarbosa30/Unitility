@@ -196,6 +196,21 @@ export function buildUserOp(params: BuildUserOpParams): Omit<UserOperation, 'sig
     contextData
   ]) as Hex;
   
+  // Validate paymasterAndData structure for debugging
+  console.log('[buildUserOp] paymasterAndData structure:', {
+    totalLength: paymasterAndData.length,
+    expectedLength: '0x' + (20 + 32 + 96) * 2 + 2, // 148 bytes = 296 hex chars + '0x' = 298
+    paymasterAddress: paymasterAddress,
+    paymasterAddressLength: paymasterAddress.length,
+    postGasPackedLength: postGasPacked.length,
+    contextDataLength: contextData.length,
+    postVerificationGasLimit: postVerificationGasLimit.toString(),
+    postOpGasLimit: postOpGasLimit.toString(),
+    recipient: recipientAddress,
+    amount: amount.toString(),
+    fee: tokenFee.toString(),
+  });
+  
   return {
     sender: account,
     nonce,
