@@ -25,16 +25,15 @@ export interface PackedUserOperation {
   signature: Hex;
 }
 
-// SimpleAccount ABI for execute function
-const SIMPLE_ACCOUNT_EXECUTE_ABI = [
+// SimpleAccount ABI for executeBatch function
+const SIMPLE_ACCOUNT_EXECUTE_BATCH_ABI = [
   {
-    name: 'execute',
+    name: 'executeBatch',
     type: 'function',
     stateMutability: 'nonpayable',
     inputs: [
-      { name: 'dest', type: 'address' },
-      { name: 'value', type: 'uint256' },
-      { name: 'func', type: 'bytes' },
+      { name: 'dest', type: 'address[]' },
+      { name: 'func', type: 'bytes[]' },
     ],
     outputs: [],
   },
@@ -45,15 +44,23 @@ const SIMPLE_ACCOUNT_EXECUTE_ABI = [
     inputs: [],
     outputs: [{ name: '', type: 'uint256' }],
   },
+  {
+    name: 'owner',
+    type: 'function',
+    stateMutability: 'view',
+    inputs: [],
+    outputs: [{ name: '', type: 'address' }],
+  },
 ] as const;
 
-// ERC-20 transfer ABI
-const ERC20_TRANSFER_ABI = [
+// ERC-20 transferFrom ABI
+const ERC20_TRANSFER_FROM_ABI = [
   {
-    name: 'transfer',
+    name: 'transferFrom',
     type: 'function',
     stateMutability: 'nonpayable',
     inputs: [
+      { name: 'from', type: 'address' },
       { name: 'to', type: 'address' },
       { name: 'amount', type: 'uint256' },
     ],
@@ -64,6 +71,7 @@ const ERC20_TRANSFER_ABI = [
 interface BuildUserOpParams {
   // Account
   account: Address; // SimpleAccount address
+  eoaOwner: Address; // EOA wallet that owns the tokens
   nonce: bigint;
   
   // Transfer details
@@ -73,6 +81,7 @@ interface BuildUserOpParams {
   
   // Paymaster
   paymasterAddress: Address;
+  feePercentage: number; // Fee in basis points (e.g., 50 = 0.5%)
   
   // Gas settings (optional, can use defaults)
   validationGasLimit?: bigint;
@@ -95,21 +104,28 @@ function packUint128s(high: bigint, low: bigint): Hex {
 }
 
 /**
- * Build a UserOperation for a gasless token transfer
+ * Build a UserOperation for a gasless token transfer using EOA tokens
  * 
  * This constructs an ERC-4337 v0.7 PackedUserOperation that:
- * 1. Calls SimpleAccount.execute() to perform an ERC-20 token transfer
+ * 1. Calls SimpleAccount.executeBatch() to perform TWO token transfers:
+ *    - transferFrom(eoa, recipient, amount)
+ *    - transferFrom(eoa, paymaster, fee)
  * 2. Uses a PaymasterPool to sponsor the gas fees
  * 3. Signs the operation with the account owner's key (signature added separately)
+ * 
+ * Prerequisites:
+ * - EOA must have approved the smart account to spend tokens
  */
 export function buildUserOp(params: BuildUserOpParams): Omit<PackedUserOperation, 'signature'> {
   const {
     account,
+    eoaOwner,
     nonce,
     tokenAddress,
     recipientAddress,
     amount,
     paymasterAddress,
+    feePercentage,
     validationGasLimit = BigInt(100000),
     callGasLimit = BigInt(50000),
     preVerificationGas = BigInt(21000),
@@ -117,27 +133,40 @@ export function buildUserOp(params: BuildUserOpParams): Omit<PackedUserOperation
     maxFeePerGas = parseEther('0.1', 'gwei'),
   } = params;
   
-  // Step 1: Encode ERC-20 transfer call
-  const transferCallData = encodeFunctionData({
-    abi: ERC20_TRANSFER_ABI,
-    functionName: 'transfer',
-    args: [recipientAddress, amount],
+  // Step 1: Calculate fee in tokens (feePercentage is in basis points, e.g., 50 = 0.5%)
+  const tokenFee = (amount * BigInt(feePercentage)) / BigInt(10000);
+  
+  // Step 2: Encode first transferFrom call: transferFrom(eoa, recipient, amount)
+  const transferToRecipient = encodeFunctionData({
+    abi: ERC20_TRANSFER_FROM_ABI,
+    functionName: 'transferFrom',
+    args: [eoaOwner, recipientAddress, amount],
   });
   
-  // Step 2: Encode SimpleAccount execute call (wraps the token transfer)
-  const executeCallData = encodeFunctionData({
-    abi: SIMPLE_ACCOUNT_EXECUTE_ABI,
-    functionName: 'execute',
-    args: [tokenAddress, BigInt(0), transferCallData],
+  // Step 3: Encode second transferFrom call: transferFrom(eoa, paymaster, fee)
+  const transferFeeToPaymaster = encodeFunctionData({
+    abi: ERC20_TRANSFER_FROM_ABI,
+    functionName: 'transferFrom',
+    args: [eoaOwner, paymasterAddress, tokenFee],
   });
   
-  // Step 3: Pack gas limits (validation gas + call gas)
+  // Step 4: Encode SimpleAccount executeBatch call with both transfers
+  const executeBatchCallData = encodeFunctionData({
+    abi: SIMPLE_ACCOUNT_EXECUTE_BATCH_ABI,
+    functionName: 'executeBatch',
+    args: [
+      [tokenAddress, tokenAddress], // Two calls to the same token
+      [transferToRecipient, transferFeeToPaymaster],
+    ],
+  });
+  
+  // Step 5: Pack gas limits (validation gas + call gas)
   const accountGasLimits = packUint128s(validationGasLimit, callGasLimit);
   
-  // Step 4: Pack gas fees (priority fee + max fee)
+  // Step 6: Pack gas fees (priority fee + max fee)
   const gasFees = packUint128s(maxPriorityFeePerGas, maxFeePerGas);
   
-  // Step 5: Construct paymaster and data
+  // Step 7: Construct paymaster and data
   // Format per ERC-4337 v0.7:
   // - Bytes 0-19: paymaster address (20 bytes)
   // - Bytes 20-35: paymasterVerificationGasLimit (16 bytes, uint128)
@@ -159,7 +188,7 @@ export function buildUserOp(params: BuildUserOpParams): Omit<PackedUserOperation
     sender: account,
     nonce,
     initCode: '0x', // No initCode needed for existing accounts
-    callData: executeCallData,
+    callData: executeBatchCallData,
     accountGasLimits,
     preVerificationGas,
     gasFees,

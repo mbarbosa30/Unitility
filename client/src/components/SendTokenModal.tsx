@@ -25,7 +25,7 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import type { Pool } from "@shared/schema";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useAccount, useSignMessage, usePublicClient } from "wagmi";
-import { parseEther, type Address, type Hex } from "viem";
+import { parseEther, formatEther, type Address, type Hex } from "viem";
 import { buildUserOp, getUserOpHash, signUserOp, ENTRY_POINT_ADDRESS } from "@/lib/userOp";
 import { bundlerClient } from "@/lib/bundler";
 import { setupSimpleAccount } from "@/lib/simpleAccount";
@@ -124,15 +124,60 @@ export default function SendTokenModal({ preselectedToken, triggerButton }: Send
       // Convert token amount to bigint (assuming 18 decimals)
       const amountBigInt = parseEther(amountInTokens);
       
-      // Step 1: Build unsigned UserOperation
+      // Get pool fee percentage from the current pool
+      const pool = await publicClient.readContract({
+        address: paymasterAddress,
+        abi: [{
+          name: 'feePct',
+          type: 'function',
+          stateMutability: 'view',
+          inputs: [],
+          outputs: [{ name: '', type: 'uint256' }],
+        }],
+        functionName: 'feePct',
+      }) as bigint;
+      const feePercentageBasisPoints = Number(pool);
+      
+      // Step 1: Check if EOA has approved smart account to spend tokens
+      const currentAllowance = await publicClient.readContract({
+        address: tokenAddress,
+        abi: [{
+          name: 'allowance',
+          type: 'function',
+          stateMutability: 'view',
+          inputs: [
+            { name: 'owner', type: 'address' },
+            { name: 'spender', type: 'address' },
+          ],
+          outputs: [{ name: '', type: 'uint256' }],
+        }],
+        functionName: 'allowance',
+        args: [address, accountAddress],
+      }) as bigint;
+      
+      // Calculate required balance (amount + fee)
+      const tokenFee = (amountBigInt * BigInt(feePercentageBasisPoints)) / BigInt(10000);
+      const requiredAllowance = amountBigInt + tokenFee;
+      
+      // If allowance is insufficient, request approval
+      if (currentAllowance < requiredAllowance) {
+        throw new Error(
+          `Please approve your smart account to spend ${selectedToken} tokens first. ` +
+          `Required: ${formatEther(requiredAllowance)}, Current: ${formatEther(currentAllowance)}`
+        );
+      }
+      
+      // Step 2: Build unsigned UserOperation
       // Use higher gas limits for account deployment
       const unsignedUserOp = buildUserOp({
         account: accountAddress,
+        eoaOwner: address, // EOA wallet address
         nonce,
         tokenAddress,
         recipientAddress,
         amount: amountBigInt,
         paymasterAddress,
+        feePercentage: feePercentageBasisPoints,
         // Increase gas limits for account deployment
         validationGasLimit: !isDeployed ? BigInt(500000) : BigInt(100000),
         callGasLimit: !isDeployed ? BigInt(200000) : BigInt(50000),
@@ -147,29 +192,29 @@ export default function SendTokenModal({ preselectedToken, triggerButton }: Send
         console.log('[SendToken] Account already deployed, no initCode needed');
       }
       
-      // Step 2: Get hash for signing
+      // Step 3: Get hash for signing
       const userOpHash = getUserOpHash(unsignedUserOp, ENTRY_POINT_ADDRESS, base.id);
       
-      // Step 3: Sign the hash with connected wallet
+      // Step 4: Sign the hash with connected wallet
       const signature = await signMessageAsync({ message: { raw: userOpHash as Hex } });
       
-      // Step 4: Attach signature to create complete UserOperation
+      // Step 5: Attach signature to create complete UserOperation
       const signedUserOp = signUserOp(unsignedUserOp, signature);
       
-      // Step 5: Submit to bundler
+      // Step 6: Submit to bundler
       const userOpHashResult = await bundlerClient.sendUserOperation(
         signedUserOp,
         ENTRY_POINT_ADDRESS
       );
       
-      // Step 6: Wait for receipt (with 30s timeout)
+      // Step 7: Wait for receipt (with 30s timeout)
       const receipt = await bundlerClient.waitForUserOperationReceipt(userOpHashResult);
       
       if (!receipt.success) {
         throw new Error(receipt.reason || "UserOperation failed");
       }
       
-      // Step 7: Record transaction in backend for tracking
+      // Step 8: Record transaction in backend for tracking
       await apiRequest("POST", "/api/transactions", {
         fromAddress: accountAddress,
         toAddress: recipientAddress,
