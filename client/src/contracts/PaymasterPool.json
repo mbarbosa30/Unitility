@@ -282,9 +282,14 @@
               "type": "bytes"
             },
             {
-              "internalType": "bytes32",
-              "name": "accountGasLimits",
-              "type": "bytes32"
+              "internalType": "uint256",
+              "name": "callGasLimit",
+              "type": "uint256"
+            },
+            {
+              "internalType": "uint256",
+              "name": "verificationGasLimit",
+              "type": "uint256"
             },
             {
               "internalType": "uint256",
@@ -292,9 +297,14 @@
               "type": "uint256"
             },
             {
-              "internalType": "bytes32",
-              "name": "gasFees",
-              "type": "bytes32"
+              "internalType": "uint256",
+              "name": "maxFeePerGas",
+              "type": "uint256"
+            },
+            {
+              "internalType": "uint256",
+              "name": "maxPriorityFeePerGas",
+              "type": "uint256"
             },
             {
               "internalType": "bytes",
@@ -307,7 +317,7 @@
               "type": "bytes"
             }
           ],
-          "internalType": "struct PackedUserOperation",
+          "internalType": "struct UserOperation",
           "name": "userOp",
           "type": "tuple"
         },

@@ -5,10 +5,10 @@ import { createWalletClient, createPublicClient, http, parseEther } from 'viem';
 import { base } from 'viem/chains';
 import { privateKeyToAccount } from 'viem/accounts';
 
-const ENTRY_POINT = '0x0000000071727De22E5E9d8BAf0edAc6f37da032';
+const ENTRY_POINT = '0x5FF137D4b0FDCD49DcA30c7CF57E578a026d2789'; // v0.6 EntryPoint
 const TALENT_TOKEN = '0x9a33406165f562e16c3abd82fd1185482e01b49a'; // Correct TALENT token
-const FEE_PCT = 50; // 0.5%
-const MIN_TRANSFER = parseEther('1'); // 1 TALENT minimum
+const FEE_PCT = 300; // 3% (300 basis points)
+const MIN_TRANSFER = parseEther('5'); // 5 TALENT minimum
 const RPC_URL = process.env.VITE_BASE_RPC_URL || 'https://mainnet.base.org';
 
 const privateKey = process.env.DEPLOYER_PRIVATE_KEY;

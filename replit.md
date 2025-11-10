@@ -28,16 +28,25 @@ The application follows a "Venmo-like" user experience philosophy: send any toke
 - **Reason**: Existing SimpleAccount (0xe7C0dad97500ccD89fF9361DC5acB20013873bb0) was deployed with v0.6 EntryPoint
 - **Bundler compatibility**: Pimlico bundler expects v0.6 format for the configured EntryPoint
 
-### November 10, 2025 - PaymasterPool Redeployment
-- **Fixed TALENT token address mismatch**: Previous deployment used incorrect token address
-- **Deployed new PaymasterPool**: 0xa7c6359200fa376c233a454de456291357d5ed18
-  - Correct TALENT token: 0x9a33406165f562e16c3abd82fd1185482e01b49a
-  - Fee: 0.5% (50 basis points)
-  - Minimum transfer: 1 TALENT token
-  - Deployment TX: 0x84ea6f8b9cce6000460df5476cea23858fd1801bbb232afaebc96ae622c25728
-- **Funded with 0.001 ETH**: TX 0x3bfdcaa397c9a9964082b4ee5b265748e13023ebe7eb88ef4691849fa45756ce
-- **Database updated**: Pool contract_address updated to new deployment
-- **Event indexer**: Automatically tracking new contract for deposits, withdrawals, and fee claims
+### November 10, 2025 - PaymasterPool v0.6 Struct Fix (CRITICAL)
+- **Root cause identified**: AA33 errors were caused by struct version mismatch, not gas limits
+  - PaymasterPool used `PackedUserOperation` (v0.7 format) but EntryPoint expects unpacked `UserOperation` (v0.6 format)
+  - EntryPoint couldn't properly decode gas limits from packed format → validation failed → AA33 revert
+- **Fixed PaymasterPool contract**: Updated struct from v0.7 packed to v0.6 unpacked format
+  - Replaced `accountGasLimits` (bytes32) with separate `callGasLimit`, `verificationGasLimit` (uint256)
+  - Replaced `gasFees` (bytes32) with separate `maxFeePerGas`, `maxPriorityFeePerGas` (uint256)
+  - Kept `paymasterAndData` as bytes (no embedded gas limits)
+  - Validation logic unchanged (executeBatch + dual transferFrom decoding works correctly)
+- **Deployed v0.6-compatible PaymasterPool**: 0xcdd156edc19d78a7be19e6afa901960d55291374
+  - Token: TALENT (0x9a33406165f562e16c3abd82fd1185482e01b49a)
+  - Fee: 3% (300 basis points)
+  - Minimum transfer: 5 TALENT tokens
+  - Deployment TX: 0x6f9c1a5b73b02255a39b7876176d4aa65b196ca9e246a9f25e3ce18e611cf392
+  - Compiled with IR-based optimizer (viaIR: true) to handle stack depth
+- **Funded with 0.001 ETH**: Deposited directly to EntryPoint via depositTo()
+  - Funding TX: 0x0b9e84167d6491869a44db78ec3991ccc232dac0bade4186e2dff165350daecd
+- **Database cleaned**: Removed old v0.7 pools, inserted new v0.6 pool
+- **Event indexer**: Restarted to track new pool for deposits, withdrawals, and fee claims
 
 ## User Preferences
 

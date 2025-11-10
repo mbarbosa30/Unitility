@@ -3,14 +3,17 @@ pragma solidity ^0.8.20;
 
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
-struct PackedUserOperation {
+// ERC-4337 v0.6 UserOperation struct (unpacked format)
+struct UserOperation {
     address sender;
     uint256 nonce;
     bytes initCode;
     bytes callData;
-    bytes32 accountGasLimits;
+    uint256 callGasLimit;
+    uint256 verificationGasLimit;
     uint256 preVerificationGas;
-    bytes32 gasFees;
+    uint256 maxFeePerGas;
+    uint256 maxPriorityFeePerGas;
     bytes paymasterAndData;
     bytes signature;
 }
@@ -139,14 +142,14 @@ contract PaymasterPool {
      * 1. transferFrom(eoa, recipient, amount)
      * 2. transferFrom(eoa, paymaster, fee)
      * 
-     * @param userOp The packed user operation (ERC-4337 v0.7 format)
+     * @param userOp The user operation (ERC-4337 v0.6 unpacked format)
      * @param userOpHash Hash of the user operation
      * @param maxCost Maximum cost of this transaction (gas price * gas limit)
      * @return context Empty bytes (no postOp needed since fee is collected in the batch)
      * @return validationData Signature validation data (0 = success)
      */
     function validatePaymasterUserOp(
-        PackedUserOperation calldata userOp,
+        UserOperation calldata userOp,
         bytes32 userOpHash,
         uint256 maxCost
     ) external returns (bytes memory context, uint256 validationData) {
