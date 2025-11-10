@@ -217,36 +217,19 @@ export function getUserOpHash(
   
   // Step 1: Tight-pack inner fields (no ABI padding)
   // Per ERC-4337 v0.7 spec: concatenate fields directly as raw bytes (244 bytes total)
-  // accountGasLimits and gasFees are ALREADY packed bytes32 - don't unpack them!
+  // toHex() returns plain hex WITHOUT '0x', so no .slice(2) needed for those
   const innerPacked = '0x' + [
-    userOp.sender.slice(2),                           // address (20 bytes)
-    toHex(userOp.nonce, 32),                          // uint256 (32 bytes)
-    keccak256(userOp.initCode || '0x').slice(2),      // bytes32 (32 bytes)
-    keccak256(userOp.callData).slice(2),              // bytes32 (32 bytes)
-    userOp.accountGasLimits.slice(2),                 // bytes32 (32 bytes) - already packed!
-    toHex(userOp.preVerificationGas, 32),             // uint256 (32 bytes)
-    userOp.gasFees.slice(2),                          // bytes32 (32 bytes) - already packed!
-    keccak256(userOp.paymasterAndData || '0x').slice(2), // bytes32 (32 bytes)
+    userOp.sender.slice(2),                           // address (20 bytes) - strip 0x
+    toHex(userOp.nonce, 32),                          // uint256 (32 bytes) - no 0x prefix
+    keccak256(userOp.initCode || '0x').slice(2),      // bytes32 (32 bytes) - strip 0x
+    keccak256(userOp.callData).slice(2),              // bytes32 (32 bytes) - strip 0x
+    userOp.accountGasLimits.slice(2),                 // bytes32 (32 bytes) - strip 0x
+    toHex(userOp.preVerificationGas, 32),             // uint256 (32 bytes) - no 0x prefix
+    userOp.gasFees.slice(2),                          // bytes32 (32 bytes) - strip 0x
+    keccak256(userOp.paymasterAndData || '0x').slice(2), // bytes32 (32 bytes) - strip 0x
   ].join('') as Hex;
   
-  // Debug logging
-  console.log('[getUserOpHash] Inner pack details:', {
-    innerPackedLength: innerPacked.length,
-    expectedLength: 488 + 2, // 244 bytes = 488 hex chars + '0x'
-    sender: userOp.sender,
-    nonce: userOp.nonce.toString(),
-    accountGasLimits: userOp.accountGasLimits,
-    preVerificationGas: userOp.preVerificationGas.toString(),
-    gasFees: userOp.gasFees,
-  });
-  
   const innerHash = keccak256(innerPacked);
-  
-  console.log('[getUserOpHash] Hashes:', {
-    innerHash,
-    entryPoint,
-    chainId,
-  });
   
   // Step 2: Outer hash uses ABI encoding (safe for fixed-size types)
   const userOpHash = keccak256(
