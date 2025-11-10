@@ -130,53 +130,71 @@ export default function SendTokenModal({ preselectedToken, triggerButton }: Send
       const amountBigInt = parseEther(amountInTokens);
       
       // Get pool fee percentage from the current pool
-      const pool = await publicClient.readContract({
-        address: paymasterAddress,
-        abi: [{
-          name: 'feePct',
-          type: 'function',
-          stateMutability: 'view',
-          inputs: [],
-          outputs: [{ name: '', type: 'uint256' }],
-        }],
-        functionName: 'feePct',
-      }) as bigint;
+      let pool: bigint;
+      try {
+        pool = await publicClient.readContract({
+          address: paymasterAddress,
+          abi: [{
+            name: 'feePct',
+            type: 'function',
+            stateMutability: 'view',
+            inputs: [],
+            outputs: [{ name: '', type: 'uint256' }],
+          }],
+          functionName: 'feePct',
+        }) as bigint;
+      } catch (error: any) {
+        console.error('[SendToken] Failed to read feePct from paymaster:', error);
+        throw new Error(`Failed to read pool fee: ${error.message || 'Unknown error'}`);
+      }
       const feePercentageBasisPoints = Number(pool);
       
       // Step 1: Check if EOA has approved smart account to spend tokens
-      const currentAllowance = await publicClient.readContract({
-        address: tokenAddress,
-        abi: [{
-          name: 'allowance',
-          type: 'function',
-          stateMutability: 'view',
-          inputs: [
-            { name: 'owner', type: 'address' },
-            { name: 'spender', type: 'address' },
-          ],
-          outputs: [{ name: '', type: 'uint256' }],
-        }],
-        functionName: 'allowance',
-        args: [address, accountAddress],
-      }) as bigint;
+      let currentAllowance: bigint;
+      try {
+        currentAllowance = await publicClient.readContract({
+          address: tokenAddress,
+          abi: [{
+            name: 'allowance',
+            type: 'function',
+            stateMutability: 'view',
+            inputs: [
+              { name: 'owner', type: 'address' },
+              { name: 'spender', type: 'address' },
+            ],
+            outputs: [{ name: '', type: 'uint256' }],
+          }],
+          functionName: 'allowance',
+          args: [address, accountAddress],
+        }) as bigint;
+      } catch (error: any) {
+        console.error('[SendToken] Failed to read token allowance:', error);
+        throw new Error(`Failed to check token approval: ${error.message || 'Unknown error'}`);
+      }
       
       // Calculate required balance (amount + fee)
       const tokenFee = (amountBigInt * BigInt(feePercentageBasisPoints)) / BigInt(10000);
       const requiredAllowance = amountBigInt + tokenFee;
       
       // Check EOA token balance
-      const eoaBalance = await publicClient.readContract({
-        address: tokenAddress,
-        abi: [{
-          name: 'balanceOf',
-          type: 'function',
-          stateMutability: 'view',
-          inputs: [{ name: 'account', type: 'address' }],
-          outputs: [{ name: '', type: 'uint256' }],
-        }],
-        functionName: 'balanceOf',
-        args: [address],
-      }) as bigint;
+      let eoaBalance: bigint;
+      try {
+        eoaBalance = await publicClient.readContract({
+          address: tokenAddress,
+          abi: [{
+            name: 'balanceOf',
+            type: 'function',
+            stateMutability: 'view',
+            inputs: [{ name: 'account', type: 'address' }],
+            outputs: [{ name: '', type: 'uint256' }],
+          }],
+          functionName: 'balanceOf',
+          args: [address],
+        }) as bigint;
+      } catch (error: any) {
+        console.error('[SendToken] Failed to read token balance:', error);
+        throw new Error(`Failed to check token balance: ${error.message || 'Unknown error'}`);
+      }
       
       console.log('[SendToken] Balance and allowance check:', {
         eoa: address,
