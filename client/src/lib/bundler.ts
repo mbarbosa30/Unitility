@@ -91,6 +91,7 @@ export class BundlerClient {
     console.log('[Bundler] Sending UserOperation:', {
       method: requestBody.method,
       entryPoint,
+      rpcUrl: this.rpcUrl,
     });
     
     const response = await fetch(this.rpcUrl, {
