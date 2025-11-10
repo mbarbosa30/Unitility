@@ -208,21 +208,20 @@ contract PaymasterPool {
         require(targets[1] == tokenAddress, "Second target must be token");
         
         // Validate first call is transferFrom (selector 0x23b872dd)
-        require(calls[0].length >= 100, "Invalid call 0 data"); // 4 bytes selector + 96 bytes params
+        bytes memory call0 = calls[0];
+        require(call0.length >= 100, "Invalid call 0 data"); // 4 bytes selector + 96 bytes params
+        
+        // Extract selector from first 4 bytes using assembly
         bytes4 selector0;
         assembly {
-            selector0 := mload(add(add(calls, 32), mul(0, 32))) // Get first element
-            selector0 := mload(add(selector0, 32)) // Get selector from bytes
+            // Load first 32 bytes after length, right-shift 224 bits to get selector
+            selector0 := shr(224, mload(add(call0, 32)))
         }
         require(selector0 == 0x23b872dd, "First call must be transferFrom");
         
-        // Decode first call parameters (skip 4-byte selector manually)
-        bytes memory call0Params = new bytes(96); // 3 * 32 bytes
-        for (uint i = 0; i < 96; i++) {
-            call0Params[i] = calls[0][i + 4];
-        }
+        // Decode transferFrom parameters (skip 4-byte selector)
         (address from0, address to0, uint256 amount0) = abi.decode(
-            call0Params,
+            call0[4:],
             (address, address, uint256)
         );
         // If eoa is address(0) (undeployed, no initCode), skip owner check
@@ -232,21 +231,20 @@ contract PaymasterPool {
         }
         
         // Validate second call is transferFrom (selector 0x23b872dd)
-        require(calls[1].length >= 100, "Invalid call 1 data"); // 4 bytes selector + 96 bytes params
+        bytes memory call1 = calls[1];
+        require(call1.length >= 100, "Invalid call 1 data"); // 4 bytes selector + 96 bytes params
+        
+        // Extract selector from first 4 bytes using assembly
         bytes4 selector1;
         assembly {
-            selector1 := mload(add(add(calls, 32), mul(1, 32))) // Get second element
-            selector1 := mload(add(selector1, 32)) // Get selector from bytes
+            // Load first 32 bytes after length, right-shift 224 bits to get selector
+            selector1 := shr(224, mload(add(call1, 32)))
         }
         require(selector1 == 0x23b872dd, "Second call must be transferFrom");
         
-        // Decode second call parameters (skip 4-byte selector manually)
-        bytes memory call1Params = new bytes(96); // 3 * 32 bytes
-        for (uint i = 0; i < 96; i++) {
-            call1Params[i] = calls[1][i + 4];
-        }
+        // Decode transferFrom parameters (skip 4-byte selector)
         (address from1, address to1, uint256 fee) = abi.decode(
-            call1Params,
+            call1[4:],
             (address, address, uint256)
         );
         // Both transfers must be from the same address
