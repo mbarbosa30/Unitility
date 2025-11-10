@@ -164,15 +164,38 @@ export default function SendTokenModal({ preselectedToken, triggerButton }: Send
       const tokenFee = (amountBigInt * BigInt(feePercentageBasisPoints)) / BigInt(10000);
       const requiredAllowance = amountBigInt + tokenFee;
       
-      console.log('[SendToken] Allowance check:', {
+      // Check EOA token balance
+      const eoaBalance = await publicClient.readContract({
+        address: tokenAddress,
+        abi: [{
+          name: 'balanceOf',
+          type: 'function',
+          stateMutability: 'view',
+          inputs: [{ name: 'account', type: 'address' }],
+          outputs: [{ name: '', type: 'uint256' }],
+        }],
+        functionName: 'balanceOf',
+        args: [address],
+      }) as bigint;
+      
+      console.log('[SendToken] Balance and allowance check:', {
         eoa: address,
         smartAccount: accountAddress,
+        eoaBalance: formatEther(eoaBalance),
         currentAllowance: formatEther(currentAllowance),
         requiredAllowance: formatEther(requiredAllowance),
         tokenAmount: formatEther(amountBigInt),
         fee: formatEther(tokenFee),
+        hasEnoughBalance: eoaBalance >= requiredAllowance,
         needsApproval: currentAllowance < requiredAllowance,
       });
+      
+      // Check if user has enough token balance
+      if (eoaBalance < requiredAllowance) {
+        throw new Error(
+          `Insufficient ${selectedToken} balance. You need ${formatEther(requiredAllowance)} but only have ${formatEther(eoaBalance)}`
+        );
+      }
       
       // If allowance is insufficient, set flag to show approval button
       if (currentAllowance < requiredAllowance) {
