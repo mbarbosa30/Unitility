@@ -562,7 +562,7 @@ export default function SendTokenModal({ preselectedToken, triggerButton }: Send
               </SelectTrigger>
               <SelectContent>
                 {pools?.map((pool) => (
-                  <SelectItem key={pool.tokenSymbol} value={pool.tokenSymbol}>
+                  <SelectItem key={pool.id} value={pool.tokenSymbol}>
                     <div className="flex items-center gap-2">
                       <TokenIcon symbol={pool.tokenSymbol} size="sm" />
                       <span className="font-medium">{pool.tokenSymbol}</span>
