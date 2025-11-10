@@ -177,13 +177,23 @@ contract PaymasterPool {
         
         // Validate first call selector: must be transferFrom
         bytes4 transferFromSelector = IERC20.transferFrom.selector;
-        require(calls[0].length >= 4, "Invalid call 0 data");
-        bytes4 call0Selector = bytes4(calls[0][0:4]);
+        require(calls[0].length >= 68, "Invalid call 0 data"); // 4 bytes selector + 32*2 addresses + 32 uint256
+        
+        bytes memory call0Data = calls[0];
+        bytes4 call0Selector;
+        assembly {
+            call0Selector := mload(add(call0Data, 32))
+        }
         require(call0Selector == transferFromSelector, "Call 0 must be transferFrom");
         
         // Decode first call: transferFrom(eoa, recipient, amount)
+        // Skip first 4 bytes (selector), then decode the rest
+        bytes memory call0Params = new bytes(call0Data.length - 4);
+        for (uint i = 0; i < call0Params.length; i++) {
+            call0Params[i] = call0Data[i + 4];
+        }
         (address from0, address to0, uint256 amount0) = abi.decode(
-            calls[0][4:], // Skip 4-byte selector
+            call0Params,
             (address, address, uint256)
         );
         // If eoa is address(0) (undeployed, no initCode), skip owner check
@@ -193,13 +203,23 @@ contract PaymasterPool {
         }
         
         // Validate second call selector: must be transferFrom
-        require(calls[1].length >= 4, "Invalid call 1 data");
-        bytes4 call1Selector = bytes4(calls[1][0:4]);
+        require(calls[1].length >= 68, "Invalid call 1 data"); // 4 bytes selector + 32*2 addresses + 32 uint256
+        
+        bytes memory call1Data = calls[1];
+        bytes4 call1Selector;
+        assembly {
+            call1Selector := mload(add(call1Data, 32))
+        }
         require(call1Selector == transferFromSelector, "Call 1 must be transferFrom");
         
         // Decode second call: transferFrom(eoa, paymaster, fee)
+        // Skip first 4 bytes (selector), then decode the rest
+        bytes memory call1Params = new bytes(call1Data.length - 4);
+        for (uint i = 0; i < call1Params.length; i++) {
+            call1Params[i] = call1Data[i + 4];
+        }
         (address from1, address to1, uint256 fee) = abi.decode(
-            calls[1][4:], // Skip 4-byte selector
+            call1Params,
             (address, address, uint256)
         );
         // Both transfers must be from the same address
