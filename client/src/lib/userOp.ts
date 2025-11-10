@@ -236,8 +236,8 @@ export function getUserOpHash(
     toHex(verificationGasLimit, 16), // uint128 (16 bytes)
     toHex(callGasLimit, 16), // uint128 (16 bytes)
     toHex(userOp.preVerificationGas, 32), // uint256 (32 bytes) - NOT uint128!
-    toHex(maxPriorityFeePerGas, 16), // uint128 (16 bytes)
-    toHex(maxFeePerGas, 16), // uint128 (16 bytes)
+    toHex(maxFeePerGas, 16), // uint128 (16 bytes) - FIXED: maxFeePerGas FIRST
+    toHex(maxPriorityFeePerGas, 16), // uint128 (16 bytes) - FIXED: maxPriorityFeePerGas SECOND
     keccak256(userOp.paymasterAndData || '0x').slice(2), // bytes32 (32 bytes)
   ].join('') as Hex;
   
