@@ -10,8 +10,9 @@ import {
 } from 'viem';
 import { base } from 'viem/chains';
 
-// ERC-4337 v0.7 EntryPoint address on Base mainnet
-export const ENTRY_POINT_ADDRESS = '0x0000000071727De22E5E9d8BAf0edAc6f37da032' as const;
+// ERC-4337 v0.6 EntryPoint address on Base mainnet
+// NOTE: Using v0.6 because existing SimpleAccount was deployed with v0.6
+export const ENTRY_POINT_ADDRESS = '0x5FF137D4b0FDCD49DcA30c7CF57E578a026d2789' as const;
 
 // PackedUserOperation structure for ERC-4337 v0.7
 export interface PackedUserOperation {
