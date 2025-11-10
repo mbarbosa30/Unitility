@@ -32,6 +32,7 @@ import { setupSimpleAccount } from "@/lib/simpleAccount";
 import { base } from "viem/chains";
 import { useSmartWalletStatus } from "@/hooks/useSmartWalletStatus";
 import { selectBestPool } from "@/lib/poolSelection";
+import { wagmiConfig } from "@/lib/wagmi";
 
 interface SendTokenModalProps {
   preselectedToken?: string;
@@ -285,8 +286,8 @@ export default function SendTokenModal({ preselectedToken, triggerButton }: Send
       
       // Step 4.6: Verify nonce from contract (debugging AA23)
       const { readContract } = await import('wagmi/actions');
-      const onChainNonce = await readContract(config, {
-        address: smartAccountAddress,
+      const onChainNonce = await readContract(wagmiConfig, {
+        address: smartAccountAddress as Hex,
         abi: [{
           inputs: [],
           name: 'getNonce',
