@@ -81,25 +81,45 @@ export class BundlerClient {
       );
     }
     
+    const requestBody = {
+      jsonrpc: '2.0',
+      id: 1,
+      method: 'eth_sendUserOperation',
+      params: [this.serializeUserOp(userOp), entryPoint],
+    };
+    
+    console.log('[Bundler] Sending UserOperation:', {
+      method: requestBody.method,
+      entryPoint,
+    });
+    
     const response = await fetch(this.rpcUrl, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({
-        jsonrpc: '2.0',
-        id: 1,
-        method: 'eth_sendUserOperation',
-        params: [this.serializeUserOp(userOp), entryPoint],
-      }),
+      body: JSON.stringify(requestBody),
     });
     
-    const data = await response.json();
+    if (!response.ok) {
+      const text = await response.text();
+      throw new Error(`Bundler HTTP error ${response.status}: ${text}`);
+    }
+    
+    let data;
+    try {
+      data = await response.json();
+    } catch (err) {
+      const text = await response.text();
+      throw new Error(`Bundler returned invalid JSON: ${text.substring(0, 200)}`);
+    }
     
     if (data.error) {
+      console.error('[Bundler] Error response:', data.error);
       throw new Error(`Bundler error: ${data.error.message}`);
     }
     
+    console.log('[Bundler] UserOperation submitted:', data.result);
     return data.result as Hex;
   }
   
@@ -128,7 +148,18 @@ export class BundlerClient {
       }),
     });
     
-    const data = await response.json();
+    if (!response.ok) {
+      const text = await response.text();
+      throw new Error(`Bundler HTTP error ${response.status}: ${text}`);
+    }
+    
+    let data;
+    try {
+      data = await response.json();
+    } catch (err) {
+      const text = await response.text();
+      throw new Error(`Bundler returned invalid JSON: ${text.substring(0, 200)}`);
+    }
     
     if (data.error) {
       throw new Error(`Bundler error: ${data.error.message}`);
