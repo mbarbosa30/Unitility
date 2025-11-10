@@ -215,29 +215,17 @@ export function getUserOpHash(
     return value.toString(16).padStart(bytes * 2, '0');
   };
   
-  // Unpack accountGasLimits: bytes32 containing verificationGasLimit (16B) + callGasLimit (16B)
-  const accountGasLimitsHex = userOp.accountGasLimits.slice(2); // Remove 0x
-  const verificationGasLimit = BigInt('0x' + accountGasLimitsHex.slice(0, 32)); // First 16 bytes
-  const callGasLimit = BigInt('0x' + accountGasLimitsHex.slice(32, 64)); // Last 16 bytes
-  
-  // Unpack gasFees: bytes32 per ERC-4337 v0.7: maxFeePerGas (16B high) + maxPriorityFeePerGas (16B low)
-  const gasFeesHex = userOp.gasFees.slice(2); // Remove 0x
-  const maxFeePerGas = BigInt('0x' + gasFeesHex.slice(0, 32)); // First 16 bytes (high)
-  const maxPriorityFeePerGas = BigInt('0x' + gasFeesHex.slice(32, 64)); // Last 16 bytes (low)
-  
   // Step 1: Tight-pack inner fields (no ABI padding)
-  // Per ERC-4337 v0.7: Only the 4 gas LIMIT fields are uint128, preVerificationGas stays uint256
-  // Total: 20 + 32 + 32 + 32 + 16 + 16 + 32 + 16 + 16 + 32 = 244 bytes
+  // Per ERC-4337 v0.7 spec: concatenate fields directly as raw bytes (244 bytes total)
+  // accountGasLimits and gasFees are ALREADY packed bytes32 - don't unpack them!
   const innerPacked = '0x' + [
-    userOp.sender.slice(2), // address (20 bytes)
-    toHex(userOp.nonce, 32), // uint256 (32 bytes)
-    keccak256(userOp.initCode || '0x').slice(2), // bytes32 (32 bytes)
-    keccak256(userOp.callData).slice(2), // bytes32 (32 bytes)
-    toHex(verificationGasLimit, 16), // uint128 (16 bytes)
-    toHex(callGasLimit, 16), // uint128 (16 bytes)
-    toHex(userOp.preVerificationGas, 32), // uint256 (32 bytes) - NOT uint128!
-    toHex(maxFeePerGas, 16), // uint128 (16 bytes) - FIXED: maxFeePerGas FIRST
-    toHex(maxPriorityFeePerGas, 16), // uint128 (16 bytes) - FIXED: maxPriorityFeePerGas SECOND
+    userOp.sender.slice(2),                           // address (20 bytes)
+    toHex(userOp.nonce, 32),                          // uint256 (32 bytes)
+    keccak256(userOp.initCode || '0x').slice(2),      // bytes32 (32 bytes)
+    keccak256(userOp.callData).slice(2),              // bytes32 (32 bytes)
+    userOp.accountGasLimits.slice(2),                 // bytes32 (32 bytes) - already packed!
+    toHex(userOp.preVerificationGas, 32),             // uint256 (32 bytes)
+    userOp.gasFees.slice(2),                          // bytes32 (32 bytes) - already packed!
     keccak256(userOp.paymasterAndData || '0x').slice(2), // bytes32 (32 bytes)
   ].join('') as Hex;
   
