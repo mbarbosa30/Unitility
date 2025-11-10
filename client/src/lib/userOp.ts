@@ -143,8 +143,9 @@ export function buildUserOp(params: BuildUserOpParams): Omit<PackedUserOperation
   // - Bytes 20-35: paymasterVerificationGasLimit (16 bytes, uint128)
   // - Bytes 36-51: paymasterPostOpGasLimit (16 bytes, uint128)
   // - Bytes 52+: paymasterData (optional, not used by our PaymasterPool)
-  const paymasterVerificationGasLimit = BigInt(50000);
-  const paymasterPostOpGasLimit = BigInt(50000);
+  // Use higher gas limits for paymaster validation and post-op
+  const paymasterVerificationGasLimit = BigInt(300000);
+  const paymasterPostOpGasLimit = BigInt(200000);
   
   // Remove 0x prefix from address
   const addressHex = paymasterAddress.slice(2);
