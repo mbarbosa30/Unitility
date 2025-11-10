@@ -92,6 +92,7 @@ export class BundlerClient {
       method: requestBody.method,
       entryPoint,
       rpcUrl: this.rpcUrl,
+      serializedUserOp: this.serializeUserOp(userOp),
     });
     
     const response = await fetch(this.rpcUrl, {
@@ -227,22 +228,42 @@ export class BundlerClient {
     const paymasterPostOpGasLimit = paymasterAndData.length >= 104 ? BigInt('0x' + paymasterAndData.slice(72, 104)) : BigInt(0);
     const paymasterData = paymasterAndData.length > 104 ? '0x' + paymasterAndData.slice(104) : '0x';
     
-    return {
+    // Unpack initCode into factory and factoryData (v0.7 RPC format)
+    const initCode = userOp.initCode.slice(2); // Remove 0x
+    const factory = initCode.length >= 40 ? '0x' + initCode.slice(0, 40) : undefined;
+    const factoryData = initCode.length > 40 ? '0x' + initCode.slice(40) : undefined;
+    
+    const serialized: Record<string, string> = {
       sender: userOp.sender,
       nonce: `0x${userOp.nonce.toString(16)}`,
-      initCode: userOp.initCode,
       callData: userOp.callData,
       callGasLimit: `0x${callGasLimit.toString(16)}`,
       verificationGasLimit: `0x${verificationGasLimit.toString(16)}`,
       preVerificationGas: `0x${userOp.preVerificationGas.toString(16)}`,
       maxFeePerGas: `0x${maxFeePerGas.toString(16)}`,
       maxPriorityFeePerGas: `0x${maxPriorityFeePerGas.toString(16)}`,
-      paymaster,
-      paymasterVerificationGasLimit: `0x${paymasterVerificationGasLimit.toString(16)}`,
-      paymasterPostOpGasLimit: `0x${paymasterPostOpGasLimit.toString(16)}`,
-      paymasterData,
       signature: userOp.signature,
     };
+    
+    // Only include factory/factoryData if account not deployed
+    if (factory) {
+      serialized.factory = factory;
+      if (factoryData) {
+        serialized.factoryData = factoryData;
+      }
+    }
+    
+    // Only include paymaster fields if paymaster is used
+    if (paymaster !== '0x' && paymaster !== '0x0000000000000000000000000000000000000000') {
+      serialized.paymaster = paymaster;
+      serialized.paymasterVerificationGasLimit = `0x${paymasterVerificationGasLimit.toString(16)}`;
+      serialized.paymasterPostOpGasLimit = `0x${paymasterPostOpGasLimit.toString(16)}`;
+      if (paymasterData !== '0x') {
+        serialized.paymasterData = paymasterData;
+      }
+    }
+    
+    return serialized;
   }
   
   /**
