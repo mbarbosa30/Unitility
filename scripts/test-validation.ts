@@ -71,7 +71,7 @@ const testUserOp = {
   initCode: '0x' as `0x${string}`,
   callData: callDataGenerated,
   callGasLimit: 250000n,
-  verificationGasLimit: 300000n,
+  verificationGasLimit: 500000n, // Increased to match frontend
   preVerificationGas: 60000n,
   maxFeePerGas: 100000000n,
   maxPriorityFeePerGas: 1000000n,
