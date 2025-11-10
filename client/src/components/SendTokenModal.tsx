@@ -113,6 +113,14 @@ export default function SendTokenModal({ preselectedToken, triggerButton }: Send
         publicClient
       );
       
+      console.log('[SendToken] Smart account setup:', {
+        accountAddress,
+        initCode: initCode.substring(0, 50) + '...',
+        initCodeLength: initCode.length,
+        nonce: nonce.toString(),
+        isDeployed,
+      });
+      
       // Convert token amount to bigint (assuming 18 decimals)
       const amountBigInt = parseEther(amountInTokens);
       
@@ -128,7 +136,10 @@ export default function SendTokenModal({ preselectedToken, triggerButton }: Send
       
       // Override initCode if account not deployed
       if (!isDeployed) {
+        console.log('[SendToken] Account not deployed, adding initCode');
         unsignedUserOp.initCode = initCode;
+      } else {
+        console.log('[SendToken] Account already deployed, no initCode needed');
       }
       
       // Step 2: Get hash for signing
