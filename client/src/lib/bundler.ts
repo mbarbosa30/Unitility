@@ -1,9 +1,9 @@
 import type { Address, Hex } from 'viem';
-import type { PackedUserOperation } from './userOp';
+import type { UserOperation } from './userOp';
 
 // Bundler RPC methods (ERC-4337 standard)
 interface BundlerRpcMethods {
-  eth_sendUserOperation: (userOp: PackedUserOperation, entryPoint: Address) => Promise<Hex>;
+  eth_sendUserOperation: (userOp: UserOperation, entryPoint: Address) => Promise<Hex>;
   eth_getUserOperationByHash: (userOpHash: Hex) => Promise<UserOperationReceipt | null>;
   eth_getUserOperationReceipt: (userOpHash: Hex) => Promise<UserOperationReceipt | null>;
   eth_supportedEntryPoints: () => Promise<Address[]>;
@@ -67,12 +67,12 @@ export class BundlerClient {
   
   /**
    * Send a UserOperation to the bundler
-   * @param userOp The packed user operation to submit
+   * @param userOp The user operation to submit (v0.6 format)
    * @param entryPoint The EntryPoint contract address
    * @returns The UserOperation hash
    */
   async sendUserOperation(
-    userOp: PackedUserOperation,
+    userOp: UserOperation,
     entryPoint: Address
   ): Promise<Hex> {
     if (!this.rpcUrl) {
@@ -205,70 +205,24 @@ export class BundlerClient {
   }
   
   /**
-   * Serialize a PackedUserOperation for JSON-RPC
+   * Serialize a UserOperation for JSON-RPC (v0.6 format)
    * 
-   * Pimlico expects unpacked gas limits in the RPC request,
-   * even though v0.7 uses packed format on-chain
+   * For v0.6, all fields are already unpacked, so serialization is straightforward
    */
-  private serializeUserOp(userOp: PackedUserOperation): Record<string, string> {
-    // Unpack accountGasLimits (packed uint128s)
-    const accountGasLimits = userOp.accountGasLimits.slice(2); // Remove 0x
-    const verificationGasLimit = BigInt('0x' + accountGasLimits.slice(0, 32));
-    const callGasLimit = BigInt('0x' + accountGasLimits.slice(32, 64));
-    
-    // Unpack gasFees (packed uint128s) - maxFeePerGas (high) + maxPriorityFeePerGas (low)
-    const gasFees = userOp.gasFees.slice(2); // Remove 0x
-    const maxFeePerGas = BigInt('0x' + gasFees.slice(0, 32)); // First 16 bytes (high)
-    const maxPriorityFeePerGas = BigInt('0x' + gasFees.slice(32, 64)); // Last 16 bytes (low)
-    
-    // Unpack paymasterAndData
-    const paymasterAndData = userOp.paymasterAndData.slice(2); // Remove 0x
-    const paymaster = paymasterAndData.length >= 40 ? '0x' + paymasterAndData.slice(0, 40) : '0x';
-    const paymasterVerificationGasLimit = paymasterAndData.length >= 72 ? BigInt('0x' + paymasterAndData.slice(40, 72)) : BigInt(0);
-    const paymasterPostOpGasLimit = paymasterAndData.length >= 104 ? BigInt('0x' + paymasterAndData.slice(72, 104)) : BigInt(0);
-    const paymasterData = paymasterAndData.length > 104 ? '0x' + paymasterAndData.slice(104) : '0x';
-    
-    // Unpack initCode into factory and factoryData (v0.7 RPC format)
-    const initCode = userOp.initCode.slice(2); // Remove 0x
-    const factory = initCode.length >= 40 ? '0x' + initCode.slice(0, 40) : undefined;
-    const factoryData = initCode.length > 40 ? '0x' + initCode.slice(40) : undefined;
-    
-    console.log('[Bundler] Unpacking initCode:', {
-      rawInitCode: userOp.initCode.substring(0, 50) + '...',
-      initCodeLength: initCode.length,
-      factory,
-      factoryDataLength: factoryData?.length,
-    });
-    
+  private serializeUserOp(userOp: UserOperation): Record<string, string> {
     const serialized: Record<string, string> = {
       sender: userOp.sender,
       nonce: `0x${userOp.nonce.toString(16)}`,
+      initCode: userOp.initCode || '0x',
       callData: userOp.callData,
-      callGasLimit: `0x${callGasLimit.toString(16)}`,
-      verificationGasLimit: `0x${verificationGasLimit.toString(16)}`,
+      callGasLimit: `0x${userOp.callGasLimit.toString(16)}`,
+      verificationGasLimit: `0x${userOp.verificationGasLimit.toString(16)}`,
       preVerificationGas: `0x${userOp.preVerificationGas.toString(16)}`,
-      maxFeePerGas: `0x${maxFeePerGas.toString(16)}`,
-      maxPriorityFeePerGas: `0x${maxPriorityFeePerGas.toString(16)}`,
+      maxFeePerGas: `0x${userOp.maxFeePerGas.toString(16)}`,
+      maxPriorityFeePerGas: `0x${userOp.maxPriorityFeePerGas.toString(16)}`,
+      paymasterAndData: userOp.paymasterAndData || '0x',
       signature: userOp.signature,
     };
-    
-    // Only include factory/factoryData if account not deployed
-    if (factory) {
-      serialized.factory = factory;
-      if (factoryData) {
-        serialized.factoryData = factoryData;
-      }
-    }
-    
-    // Only include paymaster fields if paymaster is used
-    if (paymaster !== '0x' && paymaster !== '0x0000000000000000000000000000000000000000') {
-      serialized.paymaster = paymaster;
-      serialized.paymasterVerificationGasLimit = `0x${paymasterVerificationGasLimit.toString(16)}`;
-      serialized.paymasterPostOpGasLimit = `0x${paymasterPostOpGasLimit.toString(16)}`;
-      if (paymasterData !== '0x') {
-        serialized.paymasterData = paymasterData;
-      }
-    }
     
     return serialized;
   }

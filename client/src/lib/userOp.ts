@@ -14,16 +14,18 @@ import { base } from 'viem/chains';
 // NOTE: Using v0.6 because existing SimpleAccount was deployed with v0.6
 export const ENTRY_POINT_ADDRESS = '0x5FF137D4b0FDCD49DcA30c7CF57E578a026d2789' as const;
 
-// PackedUserOperation structure for ERC-4337 v0.7
-export interface PackedUserOperation {
+// UserOperation structure for ERC-4337 v0.6 (unpacked format)
+export interface UserOperation {
   sender: Address;
   nonce: bigint;
   initCode: Hex;
   callData: Hex;
-  accountGasLimits: Hex; // Packed: validationGasLimit (16 bytes) + callGasLimit (16 bytes)
+  callGasLimit: bigint;
+  verificationGasLimit: bigint;
   preVerificationGas: bigint;
-  gasFees: Hex; // Packed: maxPriorityFeePerGas (16 bytes) + maxFeePerGas (16 bytes)
-  paymasterAndData: Hex; // Packed: paymaster address (20 bytes) + verification data + post-op data
+  maxFeePerGas: bigint;
+  maxPriorityFeePerGas: bigint;
+  paymasterAndData: Hex;
   signature: Hex;
 }
 
@@ -94,21 +96,9 @@ interface BuildUserOpParams {
 }
 
 /**
- * Packs two uint128 values into a single bytes32
- * @param high First 16 bytes (uint128)
- * @param low Last 16 bytes (uint128)
- * @returns Packed bytes32
- */
-function packUint128s(high: bigint, low: bigint): Hex {
-  const highHex = high.toString(16).padStart(32, '0');
-  const lowHex = low.toString(16).padStart(32, '0');
-  return `0x${highHex}${lowHex}` as Hex;
-}
-
-/**
  * Build a UserOperation for a gasless token transfer using EOA tokens
  * 
- * This constructs an ERC-4337 v0.7 PackedUserOperation that:
+ * This constructs an ERC-4337 v0.6 UserOperation that:
  * 1. Calls SimpleAccount.executeBatch() to perform TWO token transfers:
  *    - transferFrom(eoa, recipient, amount)
  *    - transferFrom(eoa, paymaster, fee)
@@ -118,7 +108,7 @@ function packUint128s(high: bigint, low: bigint): Hex {
  * Prerequisites:
  * - EOA must have approved the smart account to spend tokens
  */
-export function buildUserOp(params: BuildUserOpParams): Omit<PackedUserOperation, 'signature'> {
+export function buildUserOp(params: BuildUserOpParams): Omit<UserOperation, 'signature'> {
   const {
     account,
     eoaOwner,
@@ -162,83 +152,57 @@ export function buildUserOp(params: BuildUserOpParams): Omit<PackedUserOperation
     ],
   });
   
-  // Step 5: Pack gas limits (validation gas + call gas)
-  const accountGasLimits = packUint128s(validationGasLimit, callGasLimit);
-  
-  // Step 6: Pack gas fees per ERC-4337 v0.7: maxFeePerGas (high) + maxPriorityFeePerGas (low)
-  const gasFees = packUint128s(maxFeePerGas, maxPriorityFeePerGas);
-  
-  // Step 7: Construct paymaster and data
-  // Format per ERC-4337 v0.7:
-  // - Bytes 0-19: paymaster address (20 bytes)
-  // - Bytes 20-35: paymasterVerificationGasLimit (16 bytes, uint128)
-  // - Bytes 36-51: paymasterPostOpGasLimit (16 bytes, uint128)
-  // - Bytes 52+: paymasterData (optional, not used by our PaymasterPool)
-  // Use higher gas limits for paymaster validation and post-op
-  const paymasterVerificationGasLimit = BigInt(300000);
-  const paymasterPostOpGasLimit = BigInt(200000);
-  
-  // Remove 0x prefix from address
-  const addressHex = paymasterAddress.slice(2);
-  // Encode gas limits as 16-byte (32 hex chars) uint128 values
-  const verificationGasHex = paymasterVerificationGasLimit.toString(16).padStart(32, '0');
-  const postOpGasHex = paymasterPostOpGasLimit.toString(16).padStart(32, '0');
-  
-  const paymasterAndData = `0x${addressHex}${verificationGasHex}${postOpGasHex}` as Hex;
+  // Step 5: For v0.6, paymasterAndData is just the paymaster address (no gas limits embedded)
+  const paymasterAndData = paymasterAddress as Hex;
   
   return {
     sender: account,
     nonce,
     initCode: '0x', // No initCode needed for existing accounts
     callData: executeBatchCallData,
-    accountGasLimits,
+    callGasLimit,
+    verificationGasLimit: validationGasLimit,
     preVerificationGas,
-    gasFees,
+    maxFeePerGas,
+    maxPriorityFeePerGas,
     paymasterAndData,
   };
 }
 
 /**
- * Get the hash of a UserOperation for signing
+ * Get the hash of a UserOperation for signing (v0.6 format)
  * This is used by the account owner to sign the operation
  * 
- * Per ERC-4337 v0.7 spec, the hash uses TIGHT PACKING (no ABI padding):
- * 1. Tight-pack UserOp fields with gas limits as uint128 (16 bytes each)
- * 2. Hash the packed bytes to get innerHash
- * 3. Encode innerHash with entryPoint and chainId, then hash again
+ * Per ERC-4337 v0.6 spec, the hash calculation:
+ * 1. Encodes all UserOp fields using ABI encoding
+ * 2. Hashes the encoded bytes to get innerHash
+ * 3. Encodes innerHash with entryPoint and chainId, then hashes again
  */
 export function getUserOpHash(
-  userOp: Omit<PackedUserOperation, 'signature'>,
+  userOp: Omit<UserOperation, 'signature'>,
   entryPoint: Address = ENTRY_POINT_ADDRESS,
   chainId: number = base.id
 ): Hex {
-  // Step 1: Tight-pack inner fields (no ABI padding)
-  // Per ERC-4337 v0.7 spec: concatenate fields directly as raw bytes (244 bytes total)
-  // All fields must have '0x' prefix stripped before concatenation
-  const parts = [
-    userOp.sender.slice(2),                           // 40 chars (20 bytes)
-    toHex(userOp.nonce, { size: 32 }).slice(2),       // 64 chars (32 bytes)
-    keccak256(userOp.initCode || '0x').slice(2),      // 64 chars (32 bytes)
-    keccak256(userOp.callData).slice(2),              // 64 chars (32 bytes)
-    userOp.accountGasLimits.slice(2),                 // 64 chars (32 bytes) - already packed!
-    toHex(userOp.preVerificationGas, { size: 32 }).slice(2), // 64 chars (32 bytes)
-    userOp.gasFees.slice(2),                          // 64 chars (32 bytes) - already packed!
-    keccak256(userOp.paymasterAndData || '0x').slice(2), // 64 chars (32 bytes)
-  ];
+  // Step 1: ABI-encode the UserOp (without signature)
+  const innerHash = keccak256(
+    encodeAbiParameters(
+      parseAbiParameters('address, uint256, bytes32, bytes32, uint256, uint256, uint256, uint256, uint256, bytes32'),
+      [
+        userOp.sender,
+        userOp.nonce,
+        keccak256(userOp.initCode || '0x'),
+        keccak256(userOp.callData),
+        userOp.callGasLimit,
+        userOp.verificationGasLimit,
+        userOp.preVerificationGas,
+        userOp.maxFeePerGas,
+        userOp.maxPriorityFeePerGas,
+        keccak256(userOp.paymasterAndData || '0x'),
+      ]
+    )
+  );
   
-  // Join clean hex parts → should be exactly 488 chars
-  const innerPacked = `0x${parts.join('')}` as Hex;
-  
-  console.log('[getUserOpHash] Pack verification:', {
-    packLength: innerPacked.length,
-    expectedLength: 490, // 0x + 488 hex chars
-    partsCount: parts.length,
-    isValid: innerPacked.length === 490,
-  });
-  
-  const innerHash = keccak256(innerPacked);
-  
-  // Step 2: Outer hash uses ABI encoding (safe for fixed-size types)
+  // Step 2: Outer hash with entryPoint and chainId
   const userOpHash = keccak256(
     encodeAbiParameters(
       parseAbiParameters('bytes32, address, uint256'),
@@ -252,18 +216,18 @@ export function getUserOpHash(
 /**
  * Attach a signature to an unsigned UserOperation
  * 
- * This creates a complete PackedUserOperation ready for submission to a bundler.
+ * This creates a complete UserOperation ready for submission to a bundler.
  * The signature should be generated by signing the getUserOpHash result with the
  * account owner's private key.
  * 
  * @param userOp The unsigned UserOperation
  * @param signature The signature from the account owner
- * @returns Complete PackedUserOperation with signature
+ * @returns Complete UserOperation with signature
  */
 export function signUserOp(
-  userOp: Omit<PackedUserOperation, 'signature'>,
+  userOp: Omit<UserOperation, 'signature'>,
   signature: Hex
-): PackedUserOperation {
+): UserOperation {
   return {
     ...userOp,
     signature,

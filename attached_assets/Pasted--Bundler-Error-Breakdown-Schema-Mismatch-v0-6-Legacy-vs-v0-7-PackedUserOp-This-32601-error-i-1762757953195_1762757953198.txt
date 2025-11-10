@@ -1,0 +1,90 @@
+### Bundler Error Breakdown: Schema Mismatch (v0.6 Legacy vs. v0.7 PackedUserOp)
+This -32601 error is Pimlico's JSON-RPC validator rejecting your UserOp payload—it's not a runtime revert (like AA23); it's a **pre-submit schema fail**. The bundler expects a strict ERC-4337 **v0.7 PackedUserOperation** (compact, bytes-packed fields), but your code is sending a v0.6-style object with **legacy keys** (`paymaster`, `paymasterVerificationGasLimit`, `paymasterPostOpGasLimit`) and **undefined strings** (`initCode`, `paymasterAndData`). Pimlico v0.7 endpoint (your Base RPC) enforces this hard—no v0.6 fallback.
+
+- **initCode: undefined**: Must be `'0x'` (empty bytes for deployed account). Undefined = invalid string.
+- **paymasterAndData: undefined**: Must be a hex string (pool addr + context + packed post gas). Legacy "paymaster" field can't substitute.
+- **Unrecognized Keys**: v0.7 ditched separate paymaster gas fields—pack them into `paymasterAndData` tail. Sending them = "unknown params" rejection.
+
+This blocks even estimation/submit—bundler drops the RPC call before sim. Your hash/sig/nonce are golden (from logs), so once schema-fixed, it flies.
+
+### The Fix: Build Strict v0.7 PackedUserOp (No Legacy)
+Update your UserOp construction (likely in `SendTalent.tsx` or `useBundler.ts`) to output a clean PackedUserOperation. No separate gas fields—pack 'em. Here's the drop-in builder, assuming your permit-batch callData from last time.
+
+```typescript
+import { solidityPacked, keccak256, encodeAbiParameters, parseAbiParameters } from 'ethers'; // v6
+
+async function buildPackedUserOp(
+  amount: bigint, // 30n TALENT
+  receiver: Address,
+  fee: bigint, // 0.15n
+  tokenAddress: Address,
+  account: Address, // SimpleAccount
+  ownerEOA: Address,
+  paymasterPool: Address,
+  entryPoint: Address = ENTRY_POINT_ADDRESS
+) {
+  const token = new Contract(tokenAddress, ERC20_ABI, signer);
+  const deadline = BigInt(Math.floor(Date.now() / 1000) + 3600);
+  const permitNonce = await token.nonces(ownerEOA);
+
+  // Permit Sig (gasless approve)
+  const domain = { name: await token.name(), version: '1', chainId: 8453, verifyingContract: tokenAddress };
+  const types = { Permit: [
+    { name: 'owner', type: 'address' },
+    { name: 'spender', type: 'address' },
+    { name: 'value', type: 'uint256' },
+    { name: 'nonce', type: 'uint256' },
+    { name: 'deadline', type: 'uint256' },
+  ] };
+  const permitValue = { owner: ownerEOA, spender: account, value: amount + fee, nonce: permitNonce, deadline };
+  const permitSig = await signer._signTypedData(domain, types, permitValue);
+  const { v, r, s } = ethers.Signature.from(permitSig);
+
+  // Batch CallData: Permit + transfers
+  const permitData = token.interface.encodeFunctionData('permit', [ownerEOA, account, amount + fee, deadline, v, r, s]);
+  const transferReceiverData = token.interface.encodeFunctionData('transferFrom', [ownerEOA, receiver, amount - fee]);
+  const transferPoolData = token.interface.encodeFunctionData('transferFrom', [ownerEOA, paymasterPool, fee]);
+  const batchData = accountInterface.encodeFunctionData('executeBatch', [tokenAddress, [permitData, transferReceiverData, transferPoolData]]);
+
+  // Gas Packs (v0.7 bytes32)
+  const accountGasLimits = solidityPacked(['uint128', 'uint128'], [150000n, 100000n]); // verif + call
+  const gasFees = solidityPacked(['uint128', 'uint128'], [200000000n, 1000000n]); // maxFee + maxPrio
+
+  // PaymasterAndData: Pool + context (amount/fee) + post gas pack
+  const context = encodeAbiParameters(parseAbiParameters('uint256 amount, uint256 fee'), [amount, fee]);
+  const postGas = solidityPacked(['uint128', 'uint128'], [50000n, 100000n]); // postVerif + postOp
+  const paymasterAndData = `${paymasterPool.slice(2)}${context.slice(2)}${postGas.slice(2)}`; // Tight concat, no '0x'
+
+  // Clean PackedUserOp (v0.7 schema—NO legacy keys!)
+  const userOp: PackedUserOperation = {
+    sender: account,
+    nonce: await entryPoint.getNonce(account, 0n), // 0n
+    initCode: '0x', // Deployed—string, not undefined!
+    callData: batchData,
+    accountGasLimits, // bytes32 string
+    preVerificationGas: 50000n, // uint256
+    gasFees, // bytes32 string
+    paymasterAndData: `0x${paymasterAndData}`, // Hex string, not undefined!
+    // NO "paymaster", "paymasterVerificationGasLimit", etc.—delete if present
+  };
+
+  console.log('Packed UserOp:', JSON.stringify(userOp, (k, v) => typeof v === 'bigint' ? v.toString() : v, 2)); // Debug schema
+
+  const userOpHash = getUserOpHash(userOp); // Your fixed fn
+  const signature = await signMessageAsync({ message: { raw: userOpHash } });
+
+  return { userOp, signature };
+}
+```
+
+- **Schema Lock-In**: Only v0.7 fields—no extras. `initCode: '0x'`, `paymasterAndData` full string.
+- **Upstream Cleanup**: In your hook/component, ensure no legacy props leak (e.g., if using old template, delete `userOp.paymaster = ...`).
+- **Pimlico Payload**: When POSTing to RPC (`eth_sendUserOperation`), send `params: [{ userOp, entryPoint, signature }]`—bundler validates schema pre-sim.
+
+### Test Sequence
+1. **Schema Check**: Log the userOp JSON (above)—ensure no "paymaster*" keys, initCode/paymasterAndData are '0x...' strings.
+2. **Estimate**: POST `{ method: 'pm_estimateUserOperationGas', params: [userOp, entryPoint, { paymasterContext: '0x' }] }` to Pimlico RPC. Should return gas quote, not -32601.
+3. **Submit**: If est green, `eth_sendUserOperation` → Receipt with logs (fee accrued in pool).
+4. **If -32601 Persists**: Your bundler hook has legacy defaults—grep repo for "paymasterVerificationGasLimit" and nuke.
+
+This schema-tunes your EOA proxy send—gasless TALENT flows, pool sponsors, 0.5% fee hits. No ETH. Run the est, share response—we're go-time.
