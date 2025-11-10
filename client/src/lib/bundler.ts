@@ -233,6 +233,13 @@ export class BundlerClient {
     const factory = initCode.length >= 40 ? '0x' + initCode.slice(0, 40) : undefined;
     const factoryData = initCode.length > 40 ? '0x' + initCode.slice(40) : undefined;
     
+    console.log('[Bundler] Unpacking initCode:', {
+      rawInitCode: userOp.initCode.substring(0, 50) + '...',
+      initCodeLength: initCode.length,
+      factory,
+      factoryDataLength: factoryData?.length,
+    });
+    
     const serialized: Record<string, string> = {
       sender: userOp.sender,
       nonce: `0x${userOp.nonce.toString(16)}`,
