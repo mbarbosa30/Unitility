@@ -200,39 +200,54 @@ export function buildUserOp(params: BuildUserOpParams): Omit<PackedUserOperation
  * Get the hash of a UserOperation for signing
  * This is used by the account owner to sign the operation
  * 
- * Per ERC-4337 spec:
- * 1. Encode the UserOperation struct with keccak256
- * 2. Encode the result with entryPoint and chainId
- * 3. Return keccak256 of the final encoding
+ * Per ERC-4337 v0.7 spec, the hash uses TIGHT PACKING (no ABI padding):
+ * 1. Tight-pack UserOp fields with gas limits as uint128 (16 bytes each)
+ * 2. Hash the packed bytes to get innerHash
+ * 3. Encode innerHash with entryPoint and chainId, then hash again
  */
 export function getUserOpHash(
   userOp: Omit<PackedUserOperation, 'signature'>,
   entryPoint: Address = ENTRY_POINT_ADDRESS,
   chainId: number = base.id
 ): Hex {
-  // Step 1: Pack and hash the UserOperation (per ERC-4337 v0.7 spec)
-  // Pack excludes signature and hashes dynamic fields
-  const packed = encodeAbiParameters(
-    parseAbiParameters('address, uint256, bytes32, bytes32, bytes32, uint256, bytes32, bytes32'),
-    [
-      userOp.sender,
-      userOp.nonce,
-      keccak256(userOp.initCode || '0x'),
-      keccak256(userOp.callData),
-      userOp.accountGasLimits,
-      userOp.preVerificationGas,
-      userOp.gasFees,
-      keccak256(userOp.paymasterAndData || '0x'),
-    ]
-  );
+  // Helper: Convert bigint to hex with exact byte length (no 0x prefix)
+  const toHex = (value: bigint, bytes: number): string => {
+    return value.toString(16).padStart(bytes * 2, '0');
+  };
   
-  const packedHash = keccak256(packed);
+  // Unpack accountGasLimits: bytes32 containing verificationGasLimit (16B) + callGasLimit (16B)
+  const accountGasLimitsHex = userOp.accountGasLimits.slice(2); // Remove 0x
+  const verificationGasLimit = BigInt('0x' + accountGasLimitsHex.slice(0, 32)); // First 16 bytes
+  const callGasLimit = BigInt('0x' + accountGasLimitsHex.slice(32, 64)); // Last 16 bytes
   
-  // Step 2: Encode packed hash with entryPoint and chainId, then hash again
+  // Unpack gasFees: bytes32 containing maxPriorityFeePerGas (16B) + maxFeePerGas (16B)
+  const gasFeesHex = userOp.gasFees.slice(2); // Remove 0x
+  const maxPriorityFeePerGas = BigInt('0x' + gasFeesHex.slice(0, 32)); // First 16 bytes
+  const maxFeePerGas = BigInt('0x' + gasFeesHex.slice(32, 64)); // Last 16 bytes
+  
+  // Step 1: Tight-pack inner fields (no ABI padding)
+  // Per ERC-4337 v0.7: Only the 4 gas LIMIT fields are uint128, preVerificationGas stays uint256
+  // Total: 20 + 32 + 32 + 32 + 16 + 16 + 32 + 16 + 16 + 32 = 244 bytes
+  const innerPacked = '0x' + [
+    userOp.sender.slice(2), // address (20 bytes)
+    toHex(userOp.nonce, 32), // uint256 (32 bytes)
+    keccak256(userOp.initCode || '0x').slice(2), // bytes32 (32 bytes)
+    keccak256(userOp.callData).slice(2), // bytes32 (32 bytes)
+    toHex(verificationGasLimit, 16), // uint128 (16 bytes)
+    toHex(callGasLimit, 16), // uint128 (16 bytes)
+    toHex(userOp.preVerificationGas, 32), // uint256 (32 bytes) - NOT uint128!
+    toHex(maxPriorityFeePerGas, 16), // uint128 (16 bytes)
+    toHex(maxFeePerGas, 16), // uint128 (16 bytes)
+    keccak256(userOp.paymasterAndData || '0x').slice(2), // bytes32 (32 bytes)
+  ].join('') as Hex;
+  
+  const innerHash = keccak256(innerPacked);
+  
+  // Step 2: Outer hash uses ABI encoding (safe for fixed-size types)
   const userOpHash = keccak256(
     encodeAbiParameters(
       parseAbiParameters('bytes32, address, uint256'),
-      [packedHash, entryPoint, BigInt(chainId)]
+      [innerHash, entryPoint, BigInt(chainId)]
     )
   );
   
