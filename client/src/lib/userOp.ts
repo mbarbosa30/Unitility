@@ -229,7 +229,24 @@ export function getUserOpHash(
     keccak256(userOp.paymasterAndData || '0x').slice(2), // bytes32 (32 bytes)
   ].join('') as Hex;
   
+  // Debug logging
+  console.log('[getUserOpHash] Inner pack details:', {
+    innerPackedLength: innerPacked.length,
+    expectedLength: 488 + 2, // 244 bytes = 488 hex chars + '0x'
+    sender: userOp.sender,
+    nonce: userOp.nonce.toString(),
+    accountGasLimits: userOp.accountGasLimits,
+    preVerificationGas: userOp.preVerificationGas.toString(),
+    gasFees: userOp.gasFees,
+  });
+  
   const innerHash = keccak256(innerPacked);
+  
+  console.log('[getUserOpHash] Hashes:', {
+    innerHash,
+    entryPoint,
+    chainId,
+  });
   
   // Step 2: Outer hash uses ABI encoding (safe for fixed-size types)
   const userOpHash = keccak256(
