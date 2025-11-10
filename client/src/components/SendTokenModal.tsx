@@ -284,24 +284,43 @@ export default function SendTokenModal({ preselectedToken, triggerButton }: Send
         );
       }
       
-      // Step 4.6: Verify nonce from contract (debugging AA23)
+      // Step 4.6: Verify nonce and entryPoint from contract (debugging AA23)
       const { readContract } = await import('wagmi/actions');
-      const onChainNonce = await readContract(wagmiConfig, {
-        address: smartAccountAddress as Hex,
-        abi: [{
-          inputs: [],
-          name: 'getNonce',
-          outputs: [{ type: 'uint256' }],
-          stateMutability: 'view',
-          type: 'function',
-        }],
-        functionName: 'getNonce',
-      });
+      const [onChainNonce, accountEntryPoint] = await Promise.all([
+        readContract(wagmiConfig, {
+          address: smartAccountAddress as Hex,
+          abi: [{
+            inputs: [],
+            name: 'getNonce',
+            outputs: [{ type: 'uint256' }],
+            stateMutability: 'view',
+            type: 'function',
+          }],
+          functionName: 'getNonce',
+        }),
+        readContract(wagmiConfig, {
+          address: smartAccountAddress as Hex,
+          abi: [{
+            inputs: [],
+            name: 'entryPoint',
+            outputs: [{ type: 'address' }],
+            stateMutability: 'view',
+            type: 'function',
+          }],
+          functionName: 'entryPoint',
+        }),
+      ]);
       
       console.log('[SendToken] Nonce verification:', {
         userOpNonce: unsignedUserOp.nonce.toString(),
         onChainNonce: onChainNonce.toString(),
         nonceMatch: unsignedUserOp.nonce === onChainNonce,
+      });
+      
+      console.log('[SendToken] EntryPoint verification:', {
+        accountEntryPoint,
+        expectedEntryPoint: ENTRY_POINT_ADDRESS,
+        entryPointMatch: accountEntryPoint.toLowerCase() === ENTRY_POINT_ADDRESS.toLowerCase(),
       });
       
       if (unsignedUserOp.nonce !== onChainNonce) {
@@ -310,6 +329,16 @@ export default function SendTokenModal({ preselectedToken, triggerButton }: Send
           `UserOp nonce: ${unsignedUserOp.nonce}, ` +
           `On-chain nonce: ${onChainNonce}. ` +
           `This will cause AA23 validation failure.`
+        );
+      }
+      
+      if (accountEntryPoint.toLowerCase() !== ENTRY_POINT_ADDRESS.toLowerCase()) {
+        throw new Error(
+          `EntryPoint MISMATCH! ` +
+          `Account's EntryPoint: ${accountEntryPoint}, ` +
+          `Expected: ${ENTRY_POINT_ADDRESS}. ` +
+          `The SimpleAccount was deployed with wrong EntryPoint address. ` +
+          `This explains the "account: not Owner or EntryPoint" error!`
         );
       }
       
