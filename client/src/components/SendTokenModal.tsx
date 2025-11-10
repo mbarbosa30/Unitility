@@ -24,8 +24,8 @@ import { useToast } from "@/hooks/use-toast";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import type { Pool } from "@shared/schema";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import { useAccount, useSignMessage, usePublicClient } from "wagmi";
-import { parseEther, formatEther, type Address, type Hex } from "viem";
+import { useAccount, useSignMessage, usePublicClient, useWriteContract, useWaitForTransactionReceipt } from "wagmi";
+import { parseEther, formatEther, type Address, type Hex, maxUint256 } from "viem";
 import { buildUserOp, getUserOpHash, signUserOp, ENTRY_POINT_ADDRESS } from "@/lib/userOp";
 import { bundlerClient } from "@/lib/bundler";
 import { setupSimpleAccount } from "@/lib/simpleAccount";
@@ -43,12 +43,17 @@ export default function SendTokenModal({ preselectedToken, triggerButton }: Send
   const [selectedToken, setSelectedToken] = useState(preselectedToken || "");
   const [amount, setAmount] = useState("");
   const [recipient, setRecipient] = useState("");
+  const [needsApproval, setNeedsApproval] = useState(false);
   const { toast } = useToast();
 
   // Wagmi hooks for wallet connection
   const { address, isConnected } = useAccount();
   const { signMessageAsync } = useSignMessage();
   const publicClient = usePublicClient();
+  const { writeContract, data: approvalTxHash, isPending: isApprovePending } = useWriteContract();
+  const { isLoading: isApprovalConfirming, isSuccess: isApprovalSuccess } = useWaitForTransactionReceipt({
+    hash: approvalTxHash,
+  });
   
   // Smart wallet status detection
   const { walletType, smartAccountAddress, smartAccountStatus, isLoading: isLoadingWalletStatus } = useSmartWalletStatus();
@@ -159,13 +164,17 @@ export default function SendTokenModal({ preselectedToken, triggerButton }: Send
       const tokenFee = (amountBigInt * BigInt(feePercentageBasisPoints)) / BigInt(10000);
       const requiredAllowance = amountBigInt + tokenFee;
       
-      // If allowance is insufficient, request approval
+      // If allowance is insufficient, set flag to show approval button
       if (currentAllowance < requiredAllowance) {
+        setNeedsApproval(true);
         throw new Error(
-          `Please approve your smart account to spend ${selectedToken} tokens first. ` +
-          `Required: ${formatEther(requiredAllowance)}, Current: ${formatEther(currentAllowance)}`
+          `Approval needed: Please approve your smart account to spend ${selectedToken} tokens. ` +
+          `This is a one-time setup (like approving Uniswap).`
         );
       }
+      
+      // Reset approval flag if we have sufficient allowance
+      setNeedsApproval(false);
       
       // Step 2: Build unsigned UserOperation
       // Use higher gas limits for account deployment
@@ -252,6 +261,80 @@ export default function SendTokenModal({ preselectedToken, triggerButton }: Send
       });
     },
   });
+
+  // Handle token approval
+  const handleApprove = async () => {
+    if (!address || !isConnected || !currentPool || !publicClient) {
+      toast({
+        title: "Wallet Not Connected",
+        description: "Please connect your wallet first",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    try {
+      // Get smart account address
+      const { accountAddress } = await setupSimpleAccount(address, publicClient);
+
+      // Approve unlimited tokens to smart account (like Uniswap does)
+      writeContract({
+        address: currentPool.tokenAddress as Address,
+        abi: [{
+          name: 'approve',
+          type: 'function',
+          stateMutability: 'nonpayable',
+          inputs: [
+            { name: 'spender', type: 'address' },
+            { name: 'amount', type: 'uint256' },
+          ],
+          outputs: [{ name: '', type: 'bool' }],
+        }],
+        functionName: 'approve',
+        args: [accountAddress, maxUint256],
+      });
+
+      toast({
+        title: "Approval Transaction Sent",
+        description: "Please confirm in your wallet...",
+      });
+    } catch (error: any) {
+      toast({
+        title: "Approval Failed",
+        description: error.message || "Failed to approve tokens",
+        variant: "destructive",
+      });
+    }
+  };
+
+  // Auto-retry send after successful approval (only for current approval tx)
+  useEffect(() => {
+    if (isApprovalSuccess && approvalTxHash) {
+      toast({
+        title: "Approval Successful",
+        description: `Your smart account can now spend ${selectedToken} tokens`,
+      });
+      setNeedsApproval(false);
+      
+      // Auto-retry the send
+      setTimeout(() => {
+        if (recipient && amount && currentPool) {
+          sendTokenMutation.mutate({
+            recipientAddress: recipient as Address,
+            tokenAddress: currentPool.tokenAddress as Address,
+            paymasterAddress: currentPool.contractAddress as Address,
+            amountInTokens: amount,
+            poolId: currentPool.id,
+          });
+        }
+      }, 1000);
+    }
+  }, [isApprovalSuccess, approvalTxHash]);
+
+  // Reset needsApproval when switching tokens
+  useEffect(() => {
+    setNeedsApproval(false);
+  }, [selectedToken]);
 
   const handleSend = () => {
     console.log("Send clicked - Debug info:", {
@@ -445,16 +528,51 @@ export default function SendTokenModal({ preselectedToken, triggerButton }: Send
             </div>
           </div>
 
-          <Button
-            onClick={handleSend}
-            className="w-full h-12"
-            size="lg"
-            disabled={!amount || !recipient || sendTokenMutation.isPending}
-            data-testid="button-confirm-send"
-          >
-            <Send className="h-4 w-4 mr-2" />
-            {sendTokenMutation.isPending ? "Sending..." : "Send"}
-          </Button>
+          {needsApproval ? (
+            <div className="space-y-3">
+              <div className="rounded-lg border border-warning/20 bg-warning/10 p-3">
+                <div className="flex items-start gap-2">
+                  <Info className="h-4 w-4 text-warning mt-0.5" />
+                  <div className="space-y-1">
+                    <p className="text-sm font-medium text-warning-foreground">Approval Required</p>
+                    <p className="text-xs text-muted-foreground">
+                      First-time setup: Approve your smart account to spend {selectedToken}. This is a one-time transaction.
+                    </p>
+                  </div>
+                </div>
+              </div>
+              <Button
+                onClick={handleApprove}
+                className="w-full h-12"
+                size="lg"
+                disabled={isApprovePending || isApprovalConfirming}
+                data-testid="button-approve-tokens"
+              >
+                {isApprovePending || isApprovalConfirming ? (
+                  <>
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    {isApprovalConfirming ? "Confirming..." : "Approving..."}
+                  </>
+                ) : (
+                  <>
+                    <CheckCircle2 className="h-4 w-4 mr-2" />
+                    Approve {selectedToken}
+                  </>
+                )}
+              </Button>
+            </div>
+          ) : (
+            <Button
+              onClick={handleSend}
+              className="w-full h-12"
+              size="lg"
+              disabled={!amount || !recipient || sendTokenMutation.isPending}
+              data-testid="button-confirm-send"
+            >
+              <Send className="h-4 w-4 mr-2" />
+              {sendTokenMutation.isPending ? "Sending..." : "Send"}
+            </Button>
+          )}
         </div>
       </DialogContent>
     </Dialog>
