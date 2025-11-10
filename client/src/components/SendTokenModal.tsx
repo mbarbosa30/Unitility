@@ -164,6 +164,16 @@ export default function SendTokenModal({ preselectedToken, triggerButton }: Send
       const tokenFee = (amountBigInt * BigInt(feePercentageBasisPoints)) / BigInt(10000);
       const requiredAllowance = amountBigInt + tokenFee;
       
+      console.log('[SendToken] Allowance check:', {
+        eoa: address,
+        smartAccount: accountAddress,
+        currentAllowance: formatEther(currentAllowance),
+        requiredAllowance: formatEther(requiredAllowance),
+        tokenAmount: formatEther(amountBigInt),
+        fee: formatEther(tokenFee),
+        needsApproval: currentAllowance < requiredAllowance,
+      });
+      
       // If allowance is insufficient, set flag to show approval button
       if (currentAllowance < requiredAllowance) {
         setNeedsApproval(true);
