@@ -5,7 +5,7 @@ import { z } from "zod";
 
 export const pools = pgTable("pools", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  contractAddress: text("contract_address"),
+  contractAddress: text("contract_address").notNull(),
   tokenAddress: text("token_address").notNull(),
   tokenSymbol: text("token_symbol").notNull(),
   tokenName: text("token_name").notNull(),
@@ -18,7 +18,7 @@ export const pools = pgTable("pools", {
   discount: decimal("discount", { precision: 5, scale: 2 }).notNull(),
   apy: decimal("apy", { precision: 5, scale: 2 }).notNull(),
   gasPrice: decimal("gas_price", { precision: 18, scale: 8 }).notNull(),
-  sponsor: text("sponsor"),
+  sponsor: text("sponsor").notNull(),
   chainId: integer("chain_id"),
   blockNumber: integer("block_number"),
   transactionHash: text("transaction_hash"),

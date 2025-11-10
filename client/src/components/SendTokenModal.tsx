@@ -31,6 +31,7 @@ import { bundlerClient } from "@/lib/bundler";
 import { setupSimpleAccount } from "@/lib/simpleAccount";
 import { base } from "viem/chains";
 import { useSmartWalletStatus } from "@/hooks/useSmartWalletStatus";
+import { selectBestPool } from "@/lib/poolSelection";
 
 export default function SendTokenModal() {
   const [open, setOpen] = useState(false);
@@ -58,8 +59,26 @@ export default function SendTokenModal() {
     RARE: "89.50",
   };
 
-  const currentPool = pools?.find(p => p.tokenSymbol === selectedToken);
-  const feePercentage = currentPool ? parseFloat(currentPool.feePercentage) : 0;
+  // Use intelligent pool selection to find the best pool for this transfer
+  const { data: poolSelection } = useQuery({
+    queryKey: ['pool-selection', selectedToken, amount, pools?.length],
+    queryFn: async () => {
+      if (!pools || !amount || parseFloat(amount) <= 0) {
+        return { bestPool: null, allCandidates: [] };
+      }
+      return await selectBestPool({
+        tokenSymbol: selectedToken,
+        amount,
+        pools,
+        estimatedGasInETH: "0.001", // ~$3-4 on Base
+      });
+    },
+    enabled: !!pools && !!amount && parseFloat(amount) > 0,
+    staleTime: 10000, // 10 seconds
+  });
+
+  const currentPool = poolSelection?.bestPool || null;
+  const feePercentage = currentPool ? currentPool.effectiveCostBreakdown.baseFee : 0;
   const fee = amount ? (parseFloat(amount) * feePercentage / 100).toFixed(4) : "0.00";
   const youSend = amount ? (parseFloat(amount) - parseFloat(fee)).toFixed(4) : "0.00";
 
