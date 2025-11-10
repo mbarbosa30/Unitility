@@ -101,17 +101,17 @@ export class BundlerClient {
       body: JSON.stringify(requestBody),
     });
     
+    const responseText = await response.text();
+    
     if (!response.ok) {
-      const text = await response.text();
-      throw new Error(`Bundler HTTP error ${response.status}: ${text}`);
+      throw new Error(`Bundler HTTP error ${response.status}: ${responseText}`);
     }
     
     let data;
     try {
-      data = await response.json();
+      data = JSON.parse(responseText);
     } catch (err) {
-      const text = await response.text();
-      throw new Error(`Bundler returned invalid JSON: ${text.substring(0, 200)}`);
+      throw new Error(`Bundler returned invalid JSON: ${responseText.substring(0, 200)}`);
     }
     
     if (data.error) {
@@ -148,17 +148,17 @@ export class BundlerClient {
       }),
     });
     
+    const responseText = await response.text();
+    
     if (!response.ok) {
-      const text = await response.text();
-      throw new Error(`Bundler HTTP error ${response.status}: ${text}`);
+      throw new Error(`Bundler HTTP error ${response.status}: ${responseText}`);
     }
     
     let data;
     try {
-      data = await response.json();
+      data = JSON.parse(responseText);
     } catch (err) {
-      const text = await response.text();
-      throw new Error(`Bundler returned invalid JSON: ${text.substring(0, 200)}`);
+      throw new Error(`Bundler returned invalid JSON: ${responseText.substring(0, 200)}`);
     }
     
     if (data.error) {
