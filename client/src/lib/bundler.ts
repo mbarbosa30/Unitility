@@ -205,17 +205,42 @@ export class BundlerClient {
   
   /**
    * Serialize a PackedUserOperation for JSON-RPC
+   * 
+   * Pimlico expects unpacked gas limits in the RPC request,
+   * even though v0.7 uses packed format on-chain
    */
   private serializeUserOp(userOp: PackedUserOperation): Record<string, string> {
+    // Unpack accountGasLimits (packed uint128s)
+    const accountGasLimits = userOp.accountGasLimits.slice(2); // Remove 0x
+    const verificationGasLimit = BigInt('0x' + accountGasLimits.slice(0, 32));
+    const callGasLimit = BigInt('0x' + accountGasLimits.slice(32, 64));
+    
+    // Unpack gasFees (packed uint128s)
+    const gasFees = userOp.gasFees.slice(2); // Remove 0x
+    const maxPriorityFeePerGas = BigInt('0x' + gasFees.slice(0, 32));
+    const maxFeePerGas = BigInt('0x' + gasFees.slice(32, 64));
+    
+    // Unpack paymasterAndData
+    const paymasterAndData = userOp.paymasterAndData.slice(2); // Remove 0x
+    const paymaster = paymasterAndData.length >= 40 ? '0x' + paymasterAndData.slice(0, 40) : '0x';
+    const paymasterVerificationGasLimit = paymasterAndData.length >= 72 ? BigInt('0x' + paymasterAndData.slice(40, 72)) : BigInt(0);
+    const paymasterPostOpGasLimit = paymasterAndData.length >= 104 ? BigInt('0x' + paymasterAndData.slice(72, 104)) : BigInt(0);
+    const paymasterData = paymasterAndData.length > 104 ? '0x' + paymasterAndData.slice(104) : '0x';
+    
     return {
       sender: userOp.sender,
       nonce: `0x${userOp.nonce.toString(16)}`,
       initCode: userOp.initCode,
       callData: userOp.callData,
-      accountGasLimits: userOp.accountGasLimits,
+      callGasLimit: `0x${callGasLimit.toString(16)}`,
+      verificationGasLimit: `0x${verificationGasLimit.toString(16)}`,
       preVerificationGas: `0x${userOp.preVerificationGas.toString(16)}`,
-      gasFees: userOp.gasFees,
-      paymasterAndData: userOp.paymasterAndData,
+      maxFeePerGas: `0x${maxFeePerGas.toString(16)}`,
+      maxPriorityFeePerGas: `0x${maxPriorityFeePerGas.toString(16)}`,
+      paymaster,
+      paymasterVerificationGasLimit: `0x${paymasterVerificationGasLimit.toString(16)}`,
+      paymasterPostOpGasLimit: `0x${paymasterPostOpGasLimit.toString(16)}`,
+      paymasterData,
       signature: userOp.signature,
     };
   }
